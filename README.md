@@ -15,11 +15,11 @@
 ---
 
 > [!WARNING]
-> **Pre-alpha.** The design is done and implementation has just started. Nothing below works yet; this README describes what v0.1 will do. Do not use it to protect anything.
+> **Pre-alpha.** The design is done and implementation is under way: configuration validation (`resguardo config check`) and a mock provider for tests work today; the proxy itself does not yet. This README describes what v0.1 will do. Do not use it to protect anything.
 
 ## What it is
 
-Resguardo is a single Rust binary that sits between your application and the OpenAI and Anthropic APIs. Your app talks to it exactly as it would talk to the provider: change the base URL and the key, nothing else.
+Resguardo is a single Rust binary that sits between your application and the OpenAI and Anthropic APIs, or in front of any OpenAI-compatible server you already run (LiteLLM, vLLM, Ollama…). Your app talks to it exactly as it would talk to the provider: change the base URL and the key, nothing else.
 
 ```mermaid
 flowchart LR
@@ -48,6 +48,7 @@ Many proxies redact personal data before calling a model. Resguardo is built aro
 ## Planned for v0.1
 
 - OpenAI Chat Completions and Anthropic Messages, with and without streaming
+- Any OpenAI-compatible upstream at its own URL, so Resguardo can sit in front of an existing gateway or a self-hosted model
 - Virtual keys per application; provider credentials known only to Resguardo
 - Per-application allowlists of providers and models, size limits and rate limits
 - Deterministic detectors for secrets (cloud keys, tokens, private keys, JWTs, high entropy), invisible characters, Spanish IDs, IBANs, cards (Luhn), Spanish phones and emails
@@ -98,7 +99,7 @@ The full list is in the [threat model](docs/THREAT_MODEL.md).
 | Milestone | Scope | Status |
 | --- | --- | --- |
 | M0 | Workspace, licenses, ADRs, threat model draft | ✅ Done |
-| M1 | Basic proxy: both APIs without streaming, virtual keys, egress allowlist | 🚧 Next |
+| M1 | Basic proxy: both APIs without streaming, virtual keys, egress allowlist | 🚧 In progress: config and mock provider done |
 | M2 | Scanning engine: de-obfuscation, secrets, invisible text | ⏳ |
 | M3 | Spanish validators, policy and redaction | ⏳ |
 | M4 | Streaming: SSE parser, overlap window, response controls | ⏳ |
@@ -110,7 +111,8 @@ Target for v0.1.0: February 2027.
 ## Design documents
 
 - [Threat model](docs/THREAT_MODEL.md)
-- Architecture decisions: [single process](docs/adr/0001-single-process-with-crate-boundary.md), [closed by default](docs/adr/0002-closed-by-default.md), [signed audit log](docs/adr/0003-signed-audit-log-format.md), [deterministic detectors](docs/adr/0004-deterministic-detectors-only.md)
+- Architecture decisions: [single process](docs/adr/0001-single-process-with-crate-boundary.md), [closed by default](docs/adr/0002-closed-by-default.md), [signed audit log](docs/adr/0003-signed-audit-log-format.md), [deterministic detectors](docs/adr/0004-deterministic-detectors-only.md), [OpenAI-compatible upstream](docs/adr/0005-openai-compatible-upstream.md)
+- Research: [running Claude Code through Resguardo](docs/research/claude-code-gateway.md)
 
 ## Contributing
 
