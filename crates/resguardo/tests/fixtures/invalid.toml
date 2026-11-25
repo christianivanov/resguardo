@@ -1,0 +1,24 @@
+# Deliberately invalid: plain HTTP upstream without credential, bad principal.
+[audit]
+path = "./data/audit.jsonl"
+signing_key = "./data/signing.key"
+public_key = "./data/signing.pub"
+
+[policy.actions]
+secret = "block"
+secret_candidate = "flag"
+es_id = "redact"
+iban = "redact"
+card = "block"
+phone = "redact"
+email = "redact"
+invisible_text = "redact"
+
+[[upstream]]
+provider = "openai"
+base_url = "http://api.openai.com"
+
+[[principal]]
+id = "Bad Id"
+key_sha256 = "not-a-hash"
+models.openai = ["gpt-4.1-mini"]
