@@ -14,3 +14,4 @@ workspace = true
 resguardo-core.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+getrandom.workspace = true

@@ -4,9 +4,10 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
-use resguardo_core::Config;
+use resguardo_core::virtual_key::RANDOM_BYTES;
+use resguardo_core::{Config, OffsetDateTime, PrincipalId, VirtualKey};
 
 /// An egress boundary for LLM traffic: nothing leaves without policy,
 /// and every decision leaves a signed receipt.
@@ -24,6 +25,11 @@ enum Command {
         #[command(subcommand)]
         command: ConfigCommand,
     },
+    /// Virtual key tools.
+    Key {
+        #[command(subcommand)]
+        command: KeyCommand,
+    },
 }
 
 #[derive(Subcommand)]
@@ -36,12 +42,26 @@ enum ConfigCommand {
     },
 }
 
+#[derive(Subcommand)]
+enum KeyCommand {
+    /// Generate a virtual key. The key is printed once on stdout; its hash and the line to add
+    /// to the configuration go to stderr.
+    Create {
+        /// Id of the principal the key is for.
+        #[arg(long)]
+        principal: String,
+    },
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
         Command::Config {
             command: ConfigCommand::Check { config },
         } => config_check(&config),
+        Command::Key {
+            command: KeyCommand::Create { principal },
+        } => key_create(&principal),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -61,6 +81,19 @@ fn load_config(path: &Path) -> anyhow::Result<Config> {
     for warning in &config.warnings {
         eprintln!("warning: {warning}");
     }
+    let now = OffsetDateTime::now_utc();
+    for configured in &config.principals {
+        let principal = &configured.principal;
+        if principal
+            .expires_at
+            .is_some_and(|expires_at| now >= expires_at)
+        {
+            eprintln!(
+                "warning: the virtual key of principal '{}' has expired; its requests will be rejected",
+                principal.id
+            );
+        }
+    }
     Ok(config)
 }
 
@@ -71,6 +104,32 @@ fn config_check(path: &Path) -> anyhow::Result<()> {
         path.display(),
         config.upstreams.len(),
         config.principals.len()
+    );
+    Ok(())
+}
+
+/// Generates a key from the operating system's random generator. If randomness is not
+/// available, no key is printed: a weak key is worse than none.
+fn key_create(principal: &str) -> anyhow::Result<()> {
+    let Some(principal) = PrincipalId::parse(principal) else {
+        bail!(
+            "invalid principal id '{principal}': use 1 to 64 characters of a-z, 0-9, '-' or '_', \
+             starting with a letter or digit"
+        );
+    };
+    let mut bytes = [0u8; RANDOM_BYTES];
+    getrandom::fill(&mut bytes)
+        .map_err(|e| anyhow::anyhow!("the operating system's random generator failed: {e}"))?;
+    // Not wiped afterwards: a plain overwrite can be optimized away, and the process exits
+    // right after printing. Memory wiping (`zeroize`) arrives with provider credentials (M1.5).
+    let key = VirtualKey::from_random_bytes(&bytes);
+
+    // The key alone on stdout, so `resguardo key create … > file` captures only the key.
+    println!("{}", key.expose_secret());
+    eprintln!(
+        "Virtual key for principal '{principal}' printed on stdout. It is shown only once: store it now.\n\
+         Add this line to the [[principal]] entry with id = \"{principal}\":\n\n    key_sha256 = \"{}\"\n",
+        key.hash().as_str()
     );
     Ok(())
 }
