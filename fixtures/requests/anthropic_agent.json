@@ -1,0 +1,25 @@
+{
+  "model": "claude-sonnet-4-5",
+  "max_tokens": 1024,
+  "stream": true,
+  "system": [
+    {"type": "text", "text": "You are a coding agent.", "cache_control": {"type": "ephemeral"}}
+  ],
+  "tools": [
+    {"name": "read_file", "description": "Read a file", "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}}}
+  ],
+  "messages": [
+    {"role": "user", "content": "Read .env"},
+    {"role": "assistant", "content": [
+      {"type": "thinking", "thinking": "I should read it.", "signature": "c2lnbmF0dXJl"},
+      {"type": "tool_use", "id": "toolu_01", "name": "read_file", "input": {"path": ".env"}}
+    ]},
+    {"role": "user", "content": [
+      {"type": "tool_result", "tool_use_id": "toolu_01", "content": [{"type": "text", "text": "API_KEY=not-a-real-key"}]},
+      {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "iVBORw0KGgo="}},
+      {"type": "future_block", "payload": {"note": "new block types are scanned too"}}
+    ]}
+  ],
+  "metadata": {"user_id": "user-42"},
+  "context_management": {"edits": []}
+}
