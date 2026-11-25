@@ -146,6 +146,7 @@ Threats, mitigations and residual risks are listed in the [threat model](docs/TH
 - Every buffer, decoding step and recursion has a configurable limit.
 - Detectors and policy rules are written test-first against golden vectors computed independently.
 - No real provider is ever called in tests: a [mock provider](tools/mock-upstream) speaks both APIs, including streaming and failure modes.
+- The official OpenAI and Anthropic Python SDKs are run against Resguardo ([`tools/sdk-smoke`](tools/sdk-smoke/run.sh)), with versions pinned by hash.
 - `cargo deny` enforces licenses, sources and the crate boundaries below.
 
 ```text
@@ -162,7 +163,7 @@ resguardo (binary) ─┬─ resguardo-core      domain types, configuration, vi
 | Milestone | Scope | Status |
 | --- | --- | --- |
 | **M0** | Workspace, licenses, ADRs, threat model draft | ✅ Done |
-| **M1** | Basic proxy: both APIs, virtual keys, egress allowlist | 🚧 Code done; official SDK check pending |
+| **M1** | Basic proxy: both APIs, virtual keys, egress allowlist | ✅ Done |
 | M2 | Scanning engine: de-obfuscation, secrets, invisible text | ⏳ |
 | M3 | Spanish validators, policy and redaction | ⏳ |
 | M4 | Streaming: SSE parser, overlap window, response controls | ⏳ |
@@ -170,7 +171,7 @@ resguardo (binary) ─┬─ resguardo-core      domain types, configuration, vi
 | M6 | Accuracy corpus, benchmark, exfiltration lab, release | ⏳ |
 
 <details>
-<summary>M1 in detail</summary>
+<summary>M1 in detail (done)</summary>
 
 - [x] M1.1 Domain types and validated configuration (`resguardo config check`)
 - [x] M1.2 Mock OpenAI and Anthropic server
@@ -178,7 +179,7 @@ resguardo (binary) ─┬─ resguardo-core      domain types, configuration, vi
 - [x] M1.4 Strict parsing and full-body text extraction for both APIs, unknown fields untouched
 - [x] M1.5 Egress: allowlist, credential injection, post-quantum TLS, no redirects or retries
 - [x] M1.6 HTTP server (`resguardo run`), Annex H errors in each API's shape, rate limits, G.3 cases without scanning
-- [ ] Done criterion: the official OpenAI and Anthropic SDKs reach the mock through Resguardo
+- [x] Done criterion: the official OpenAI and Anthropic SDKs reach the mock through Resguardo (`tools/sdk-smoke/run.sh`)
 
 </details>
 

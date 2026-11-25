@@ -63,6 +63,7 @@ config/               example configuration
 docs/                 ADRs, threat model, accuracy and benchmark reports
 fixtures/             synthetic requests, SSE streams, accuracy corpus
 tools/mock-upstream/  fake OpenAI and Anthropic server
+tools/sdk-smoke/      official Python SDKs against Resguardo and the mock (uv)
 lab/                  docker compose exfiltration lab with an internal network
 fuzz/                 cargo-fuzz targets
 ```
