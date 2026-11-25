@@ -6,6 +6,7 @@
 listen = "127.0.0.1:8787"          # local only by default
 max_body_bytes = 1048576           # 1 MiB
 request_timeout_secs = 120
+max_response_bytes = 8388608       # 8 MiB; non-streamed responses larger than this are rejected
 
 [audit]
 path = "./data/audit.jsonl"

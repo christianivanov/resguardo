@@ -286,6 +286,10 @@ pub enum BlockCode {
     RateLimited,
     SensitiveData,
     ScanError,
+    /// The provider answered with a redirect, which is never followed.
+    UpstreamRedirect,
+    /// Connection, TLS, timeout or an unacceptable response from the provider.
+    UpstreamError,
     AuditUnavailable,
 }
 
@@ -301,6 +305,8 @@ impl BlockCode {
             BlockCode::RateLimited => "RATE_LIMITED",
             BlockCode::SensitiveData => "SENSITIVE_DATA",
             BlockCode::ScanError => "SCAN_ERROR",
+            BlockCode::UpstreamRedirect => "UPSTREAM_REDIRECT",
+            BlockCode::UpstreamError => "UPSTREAM_ERROR",
             BlockCode::AuditUnavailable => "AUDIT_UNAVAILABLE",
         }
     }
@@ -313,6 +319,7 @@ impl BlockCode {
             BlockCode::BodyTooLarge => 413,
             BlockCode::RateLimited => 429,
             BlockCode::ScanError => 500,
+            BlockCode::UpstreamRedirect | BlockCode::UpstreamError => 502,
             BlockCode::AuditUnavailable => 503,
         }
     }
@@ -383,6 +390,8 @@ mod tests {
             (BlockCode::BodyTooLarge, "BODY_TOO_LARGE", 413),
             (BlockCode::RateLimited, "RATE_LIMITED", 429),
             (BlockCode::ScanError, "SCAN_ERROR", 500),
+            (BlockCode::UpstreamRedirect, "UPSTREAM_REDIRECT", 502),
+            (BlockCode::UpstreamError, "UPSTREAM_ERROR", 502),
             (BlockCode::AuditUnavailable, "AUDIT_UNAVAILABLE", 503),
         ];
         for (code, name, status) in expected {

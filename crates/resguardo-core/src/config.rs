@@ -63,6 +63,12 @@ pub struct ServerConfig {
     pub listen: SocketAddr,
     pub max_body_bytes: usize,
     pub request_timeout_secs: u64,
+    /// Largest non-streamed upstream response that is read into memory.
+    pub max_response_bytes: usize,
+}
+
+impl ServerConfig {
+    pub const DEFAULT_MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 }
 
 impl Default for ServerConfig {
@@ -71,6 +77,7 @@ impl Default for ServerConfig {
             listen: SocketAddr::from(([127, 0, 0, 1], 8787)),
             max_body_bytes: Limits::DEFAULT_MAX_BODY_BYTES,
             request_timeout_secs: 120,
+            max_response_bytes: Self::DEFAULT_MAX_RESPONSE_BYTES,
         }
     }
 }
@@ -288,6 +295,9 @@ fn validate_server(server: &ServerConfig, problems: &mut Vec<String>, warnings: 
     }
     if server.request_timeout_secs == 0 {
         problems.push("[server] request_timeout_secs must be greater than 0".into());
+    }
+    if server.max_response_bytes == 0 {
+        problems.push("[server] max_response_bytes must be greater than 0".into());
     }
     if !server.listen.ip().is_loopback() {
         warnings.push(format!(
