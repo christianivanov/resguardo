@@ -170,6 +170,9 @@ pub struct ScanText {
     pub text: String,
 }
 
+/// Who wrote a [`ScanText`]. Informational: policy does not depend on it.
+/// `System` also covers everything the application sets outside the conversation
+/// (`tools`, `metadata`…), see ADR 0007.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
@@ -274,6 +277,8 @@ pub enum Decision {
 /// Why a request was blocked. Each maps to one error code and HTTP status (Annex H).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BlockCode {
+    /// Malformed body, unknown query parameter or missing field (ADR 0007).
+    InvalidRequest,
     UnknownKey,
     KeyExpired,
     ModelNotAllowed,
@@ -288,6 +293,7 @@ impl BlockCode {
     /// Error code returned to the application and written to the audit log.
     pub fn as_str(self) -> &'static str {
         match self {
+            BlockCode::InvalidRequest => "INVALID_REQUEST",
             BlockCode::UnknownKey => "UNKNOWN_KEY",
             BlockCode::KeyExpired => "KEY_EXPIRED",
             BlockCode::ModelNotAllowed => "MODEL_NOT_ALLOWED",
@@ -301,6 +307,7 @@ impl BlockCode {
 
     pub fn http_status(self) -> u16 {
         match self {
+            BlockCode::InvalidRequest => 400,
             BlockCode::UnknownKey | BlockCode::KeyExpired => 401,
             BlockCode::ModelNotAllowed | BlockCode::SensitiveData => 403,
             BlockCode::BodyTooLarge => 413,
@@ -368,6 +375,7 @@ mod tests {
     #[test]
     fn block_codes_map_to_annex_h() {
         let expected = [
+            (BlockCode::InvalidRequest, "INVALID_REQUEST", 400),
             (BlockCode::UnknownKey, "UNKNOWN_KEY", 401),
             (BlockCode::KeyExpired, "KEY_EXPIRED", 401),
             (BlockCode::ModelNotAllowed, "MODEL_NOT_ALLOWED", 403),
