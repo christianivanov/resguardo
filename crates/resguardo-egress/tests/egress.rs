@@ -128,7 +128,7 @@ fn request<'a>(
 const OPENAI_BODY: &str =
     r#"{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"hola"}],"extra":1}"#;
 const ANTHROPIC_BODY: &str =
-    r#"{"model":"claude-sonnet-4-5","max_tokens":5,"messages":[{"role":"user","content":"hola"}]}"#;
+    r#"{"model":"claude-sonnet-5-5","max_tokens":5,"messages":[{"role":"user","content":"hola"}]}"#;
 
 #[tokio::test]
 async fn openai_receives_the_real_key_and_the_exact_body() {

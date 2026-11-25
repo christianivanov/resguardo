@@ -327,7 +327,7 @@ mod tests {
             &fixture("anthropic_agent.json"),
         )
         .unwrap();
-        assert_eq!(parsed.model, "claude-sonnet-4-5");
+        assert_eq!(parsed.model, "claude-sonnet-5-5");
         assert!(parsed.stream);
         assert_eq!(parsed.message_count, 3);
         assert_eq!(parsed.binary_parts, 1, "the base64 PNG");
@@ -366,7 +366,7 @@ mod tests {
             ("/messages/2/content/2/type", User, "future_block"),
             ("/messages/2/role", User, "user"),
             ("/metadata/user_id", System, "user-42"),
-            ("/model", System, "claude-sonnet-4-5"),
+            ("/model", System, "claude-sonnet-5-5"),
             ("/system/0/cache_control/type", System, "ephemeral"),
             ("/system/0/text", System, "You are a coding agent."),
             ("/system/0/type", System, "text"),

@@ -100,7 +100,7 @@ allow_insecure_upstream = true
 id = "bot"
 key_sha256 = "{bot_hash}"
 models.openai = ["gpt-4.1-mini", "mock-redirect"]
-models.anthropic = ["claude-sonnet-4-5", "mock-error"]
+models.anthropic = ["claude-sonnet-5-5", "mock-error"]
 models.openai_compatible = ["llama-3"]
 
 [[principal]]
@@ -213,7 +213,7 @@ impl Harness {
 }
 
 const CHAT: &str = r#"{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"hola"}]}"#;
-const MESSAGES: &str = r#"{"model":"claude-sonnet-4-5","max_tokens":10,"messages":[{"role":"user","content":"hola"}]}"#;
+const MESSAGES: &str = r#"{"model":"claude-sonnet-5-5","max_tokens":10,"messages":[{"role":"user","content":"hola"}]}"#;
 
 #[tokio::test]
 async fn g3_request_without_findings_arrives_byte_for_byte() {
@@ -315,7 +315,7 @@ async fn g3_model_outside_the_list_is_403() {
     assert_eq!(reply.code(), "MODEL_NOT_ALLOWED");
     assert_eq!(reply.json()["error"]["type"], "resguardo_policy_violation");
     // An OpenAI model is not allowed through the Anthropic route either.
-    let crossed = MESSAGES.replace("claude-sonnet-4-5", "gpt-4.1-mini");
+    let crossed = MESSAGES.replace("claude-sonnet-5-5", "gpt-4.1-mini");
     let reply = h.anthropic(&h.keys.bot, &crossed).await;
     assert_eq!(reply.status, 403);
     assert_eq!(reply.json()["error"]["type"], "permission_error");
@@ -379,7 +379,7 @@ async fn g3_provider_redirect_is_502_and_not_followed() {
 #[tokio::test]
 async fn provider_errors_pass_through_unchanged() {
     let h = harness().await;
-    let body = MESSAGES.replace("claude-sonnet-4-5", "mock-error");
+    let body = MESSAGES.replace("claude-sonnet-5-5", "mock-error");
     let reply = h.anthropic(&h.keys.bot, &body).await;
     assert_eq!(reply.status, 500);
     assert_eq!(reply.json()["type"], "error");

@@ -83,7 +83,7 @@ async fn openai_streaming_sends_chunks_and_done() {
 #[tokio::test]
 async fn anthropic_streaming_sends_the_full_event_sequence() {
     let mock = start().await;
-    let body = r#"{"model":"claude-sonnet-4-5","max_tokens":10,"stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}"#;
+    let body = r#"{"model":"claude-sonnet-5-5","max_tokens":10,"stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}"#;
     let response = post(&mock, "/v1/messages?beta=true", body).await;
     assert_eq!(
         response.headers()["anthropic-ratelimit-unified-status"],
@@ -113,7 +113,7 @@ async fn anthropic_streaming_sends_the_full_event_sequence() {
 #[tokio::test]
 async fn anthropic_non_streaming_returns_a_message() {
     let mock = start().await;
-    let body = r#"{"model":"claude-sonnet-4-5","max_tokens":10,"messages":[{"role":"user","content":"hola"}]}"#;
+    let body = r#"{"model":"claude-sonnet-5-5","max_tokens":10,"messages":[{"role":"user","content":"hola"}]}"#;
     let json: Value = post(&mock, "/v1/messages", body).await.json_value().await;
     assert_eq!(json["type"], "message");
     assert_eq!(json["content"][0]["text"], "echo: hola");

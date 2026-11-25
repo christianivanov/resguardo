@@ -113,7 +113,7 @@ credential_env = "ANTHROPIC_API_KEY"
 [[principal]]
 id = "support-bot"
 key_sha256 = "{hash}"
-models.anthropic = ["claude-sonnet-4-5"]
+models.anthropic = ["claude-sonnet-5-5"]
 "#
     );
     let config = resguardo_core::Config::from_toml_str(&config).expect("valid config");

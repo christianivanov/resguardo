@@ -910,7 +910,7 @@ credential_env = "OPENAI_API_KEY"
 
     #[test]
     fn models_need_an_upstream_and_no_duplicates() {
-        let p = principal("bot", KEY_A, "models.anthropic = [\"claude-sonnet-4-5\"]");
+        let p = principal("bot", KEY_A, "models.anthropic = [\"claude-sonnet-5-5\"]");
         assert_rejected(
             &[BASE, OPENAI_UPSTREAM, &p],
             "no [[upstream]] for anthropic",
