@@ -10,6 +10,7 @@
   <img alt="Rust 2024 edition" src="https://img.shields.io/badge/rust-2024_edition-orange.svg">
   <img alt="unsafe: forbidden" src="https://img.shields.io/badge/unsafe-forbidden-success.svg">
   <img alt="Status: pre-alpha" src="https://img.shields.io/badge/status-pre--alpha-lightgrey.svg">
+  <img alt="Milestone: 1 of 6 done" src="https://img.shields.io/badge/milestones-1_of_6_done-yellow.svg">
 </p>
 
 <p align="center">
@@ -26,7 +27,15 @@
 ---
 
 > [!WARNING]
-> **Pre-alpha.** The proxy runs end to end against the mock provider: virtual keys, strict parsing, model allowlists, rate limits and egress. Scanning (M2) and the signed audit log (M5) do not exist yet, so `resguardo run` refuses real providers. Sections marked *planned* describe v0.1. Do not use it to protect anything yet.
+> **Pre-alpha.** The proxy runs end to end, and the official OpenAI and Anthropic SDKs work through it against a mock provider. Scanning (M2) and the signed audit log (M5) do not exist yet, so `resguardo run` refuses real providers on purpose. Do not use it to protect anything yet.
+
+| Works today | Coming next |
+| --- | --- |
+| ✅ OpenAI Chat Completions and Anthropic Messages (non-streaming) | ⏳ Secret and invisible-text detectors (M2) |
+| ✅ Virtual keys, per-key model allowlists, size and rate limits | ⏳ Spanish ID, IBAN and card validators; redaction (M3) |
+| ✅ Strict parsing and full-body text extraction | ⏳ Streaming with an overlapping scan window (M4) |
+| ✅ Egress allowlist, credential injection, post-quantum TLS | ⏳ Signed, hash-chained audit log and `verify-log` (M5) |
+| ✅ Errors each official SDK understands | ⏳ Accuracy corpus, benchmark, exfiltration lab (M6) |
 
 ## Why Resguardo
 
@@ -66,30 +75,52 @@ flowchart LR
 
 ## Try it today
 
-Requires a stable Rust toolchain (pinned by `rust-toolchain.toml`) and a C compiler, used to build the TLS crypto library.
+Requires a stable Rust toolchain (pinned by `rust-toolchain.toml`), a C compiler (for the TLS crypto library) and, for the SDK demo, [uv](https://docs.astral.sh/uv/).
 
-```sh
-git clone https://github.com/christianivanov/resguardo && cd resguardo
+**The whole path in one command.** It starts the mock provider and Resguardo with a fresh virtual key and fake credentials, then calls them with the official Python SDKs (pinned by hash):
 
-# Validate a configuration: every problem is reported at once, and Resguardo refuses to start on any of them.
-cargo run -p resguardo -- config check --config config/resguardo.example.toml
-# config/resguardo.example.toml: OK (2 upstream(s), 1 principal(s))
+```console
+$ git clone https://github.com/christianivanov/resguardo && cd resguardo
+$ tools/sdk-smoke/run.sh
+ok   openai: chat completion through Resguardo
+ok   anthropic: message with the key in x-api-key
+ok   anthropic: message with the key as a bearer token
+ok   openai: unknown key -> AuthenticationError
+ok   openai: model outside the list -> PermissionDeniedError
+ok   anthropic: unknown key -> AuthenticationError
+ok   anthropic: model outside the list -> PermissionDeniedError
 
-# Create a virtual key: the key goes to stdout once, its SHA-256 to stderr.
-cargo run -p resguardo -- key create --principal support-bot
-# rsg_<43 random Base62 characters>
-# Add this line to the [[principal]] entry with id = "support-bot":
-#     key_sha256 = "<64 hex characters>"
+all checks passed
+ok   no virtual key reached the upstream
+```
 
-# Start the fake OpenAI and Anthropic server used by the tests.
-cargo run -p resguardo-mock-upstream -- --listen 127.0.0.1:9000
+**Step by step:**
 
-# Run the proxy in front of it. Until scanning and the signed audit log exist, `run` refuses
-# any upstream that is not local (allow_insecure_upstream = true).
-cargo run -p resguardo -- run --config my-local-config.toml
-curl http://127.0.0.1:8787/v1/chat/completions \
-  -H "authorization: Bearer rsg_..." -H "content-type: application/json" \
-  -d '{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"hola"}]}'
+```console
+$ cargo run -p resguardo -- config check --config config/resguardo.example.toml
+config/resguardo.example.toml: OK (2 upstream(s), 1 principal(s))
+
+$ cargo run -p resguardo -- key create --principal support-bot
+rsg_<43 random Base62 characters>
+Virtual key for principal 'support-bot' printed on stdout. It is shown only once: store it now.
+Add this line to the [[principal]] entry with id = "support-bot":
+
+    key_sha256 = "<64 hex characters>"
+
+# Until M2 and M5, `run` only accepts local upstreams (allow_insecure_upstream = true),
+# such as the mock: cargo run -p resguardo-mock-upstream -- --listen 127.0.0.1:9000
+$ cargo run -p resguardo -- run --config my-local.toml
+resguardo listening on http://127.0.0.1:8787
+```
+
+Every error comes in the shape of the API that was called, so each SDK raises its usual exception, with Resguardo's code and a request id:
+
+```jsonc
+// POST /v1/messages with a model outside the key's list (Anthropic shape)
+{"type":"error","error":{"type":"permission_error","code":"MODEL_NOT_ALLOWED","message":"this model is not allowed for this key"},"request_id":"01a213a9-…"}
+
+// POST /v1/chat/completions with an unknown key (OpenAI shape)
+{"error":{"type":"resguardo_error","code":"UNKNOWN_KEY","message":"unknown or missing virtual key","request_id":"01a213a9-…"}}
 ```
 
 ### Planned usage (v0.1)
@@ -150,12 +181,13 @@ Threats, mitigations and residual risks are listed in the [threat model](docs/TH
 - `cargo deny` enforces licenses, sources and the crate boundaries below.
 
 ```text
-resguardo (binary) ─┬─ resguardo-core      domain types, configuration, virtual keys
-                    ├─ resguardo-scan      detectors (pure: no I/O, no clock)
-                    ├─ resguardo-policy    decisions (pure)
-                    ├─ resguardo-proto     OpenAI and Anthropic formats, SSE
-                    ├─ resguardo-audit     hash-chained, signed log
-                    └─ resguardo-egress    allowlist, credentials, TLS (cannot depend on scan or policy)
+resguardo (binary) ─┬─ resguardo-core      domain types, configuration, virtual keys     ✅
+                    ├─ resguardo-proto     strict parsing and text extraction; SSE (M4)  ✅
+                    ├─ resguardo-egress    allowlist, credentials, TLS                   ✅
+                    │                      (cannot depend on scan or policy)
+                    ├─ resguardo-scan      detectors (pure: no I/O, no clock)            M2
+                    ├─ resguardo-policy    decisions (pure)                              M3
+                    └─ resguardo-audit     hash-chained, signed log                      M5
 ```
 
 ## Roadmap
