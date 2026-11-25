@@ -9,4 +9,5 @@ Ideas that are out of scope for v0.1. Add them here instead of implementing them
 - Optional routes for Claude Code: `/v1/messages/count_tokens` and `/v1/models`.
 - Per-principal option to block requests with binary parts (images, audio, PDFs), which v0.1 forwards without scanning (ADR 0007).
 - Scan the values of forwarded headers (`anthropic-beta`), which are short ASCII but not scanned in v0.1.
+- A header read timeout for slow clients (slowloris), and TLS on the listening side.
 - Scan numbers in the JSON body (for example card numbers sent as numbers), with the original digits rather than the parsed value.

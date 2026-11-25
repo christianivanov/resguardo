@@ -26,7 +26,7 @@
 ---
 
 > [!WARNING]
-> **Pre-alpha.** Configuration validation, virtual keys, strict request parsing, the egress client and the mock provider work today; the proxy itself arrives with milestone M1. Sections marked *planned* describe v0.1. Do not use it to protect anything yet.
+> **Pre-alpha.** The proxy runs end to end against the mock provider: virtual keys, strict parsing, model allowlists, rate limits and egress. Scanning (M2) and the signed audit log (M5) do not exist yet, so `resguardo run` refuses real providers. Sections marked *planned* describe v0.1. Do not use it to protect anything yet.
 
 ## Why Resguardo
 
@@ -83,6 +83,13 @@ cargo run -p resguardo -- key create --principal support-bot
 
 # Start the fake OpenAI and Anthropic server used by the tests.
 cargo run -p resguardo-mock-upstream -- --listen 127.0.0.1:9000
+
+# Run the proxy in front of it. Until scanning and the signed audit log exist, `run` refuses
+# any upstream that is not local (allow_insecure_upstream = true).
+cargo run -p resguardo -- run --config my-local-config.toml
+curl http://127.0.0.1:8787/v1/chat/completions \
+  -H "authorization: Bearer rsg_..." -H "content-type: application/json" \
+  -d '{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"hola"}]}'
 ```
 
 ### Planned usage (v0.1)
@@ -155,7 +162,7 @@ resguardo (binary) ─┬─ resguardo-core      domain types, configuration, vi
 | Milestone | Scope | Status |
 | --- | --- | --- |
 | **M0** | Workspace, licenses, ADRs, threat model draft | ✅ Done |
-| **M1** | Basic proxy: both APIs, virtual keys, egress allowlist | 🚧 5 of 6 done |
+| **M1** | Basic proxy: both APIs, virtual keys, egress allowlist | 🚧 Code done; official SDK check pending |
 | M2 | Scanning engine: de-obfuscation, secrets, invisible text | ⏳ |
 | M3 | Spanish validators, policy and redaction | ⏳ |
 | M4 | Streaming: SSE parser, overlap window, response controls | ⏳ |
@@ -170,7 +177,8 @@ resguardo (binary) ─┬─ resguardo-core      domain types, configuration, vi
 - [x] M1.3 Virtual keys (`resguardo key create`), lookup by hash, expiry
 - [x] M1.4 Strict parsing and full-body text extraction for both APIs, unknown fields untouched
 - [x] M1.5 Egress: allowlist, credential injection, post-quantum TLS, no redirects or retries
-- [ ] M1.6 HTTP server and errors; the official SDKs reach the mock through Resguardo
+- [x] M1.6 HTTP server (`resguardo run`), Annex H errors in each API's shape, rate limits, G.3 cases without scanning
+- [ ] Done criterion: the official OpenAI and Anthropic SDKs reach the mock through Resguardo
 
 </details>
 
