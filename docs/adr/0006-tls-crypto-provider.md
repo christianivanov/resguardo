@@ -30,6 +30,13 @@ Use **`aws-lc-rs`** as the `rustls` crypto provider.
 ## Consequences
 
 - The first build is slower, especially on older machines; incremental builds are not affected.
-- Building needs a C compiler (and, on some platforms, CMake). The README lists it.
+- Building needs a C compiler. The README lists it.
 - `ring` must not appear in the dependency tree for TLS. M1.5 checks this with `cargo tree -i ring`.
 - Audit log signing (ADR 0003) is a separate decision, taken in M5; it may use `ed25519-dalek` or `aws-lc-rs`.
+
+## Verification (M1.5, 2026-11-25)
+
+- `reqwest` 0.13's `rustls` feature selects `aws-lc-rs` and `rustls-platform-verifier` (the operating system's certificate verifier).
+- `reqwest` turns off the default features of `rustls`, including `prefer-post-quantum`. Without it, X25519MLKEM768 is offered **last**, so handshakes would normally use classical X25519. `resguardo-egress` depends on `rustls` directly only to turn that feature back on, and a unit test checks that X25519MLKEM768 is the first key exchange group offered.
+- `ring` is banned in `deny.toml`, so it cannot enter the dependency tree unnoticed.
+- Building needs a C compiler; CMake is not required (checked on macOS).

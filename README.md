@@ -26,7 +26,7 @@
 ---
 
 > [!WARNING]
-> **Pre-alpha.** Configuration validation, virtual keys, strict request parsing and the mock provider work today; the proxy itself arrives with milestone M1. Sections marked *planned* describe v0.1. Do not use it to protect anything yet.
+> **Pre-alpha.** Configuration validation, virtual keys, strict request parsing, the egress client and the mock provider work today; the proxy itself arrives with milestone M1. Sections marked *planned* describe v0.1. Do not use it to protect anything yet.
 
 ## Why Resguardo
 
@@ -66,7 +66,7 @@ flowchart LR
 
 ## Try it today
 
-Requires a stable Rust toolchain (pinned by `rust-toolchain.toml`).
+Requires a stable Rust toolchain (pinned by `rust-toolchain.toml`) and a C compiler, used to build the TLS crypto library.
 
 ```sh
 git clone https://github.com/christianivanov/resguardo && cd resguardo
@@ -116,11 +116,10 @@ What is already enforced in code:
 - **Configuration:** unknown fields are errors, not ignored settings. Upstreams must be `https://`; plain HTTP is accepted only for `localhost` with an explicit flag. URLs with credentials, queries or fragments are rejected.
 - **Strict parsing:** bodies with duplicate keys (even when escaped differently), invalid UTF-8 or trailing data are rejected, so the scanner and the provider can never read different values. Only known query parameters pass, and the upstream path is fixed.
 - **Full-body extraction:** every string in the request is handed to the scanner with its JSON Pointer, including content block types that do not exist yet. Only images, audio and PDFs are skipped, and counted.
+- **Egress:** only the configured upstream of each provider, at a fixed path; the application's credentials, cookies and every header outside a short allowlist are dropped and the real key is added. No redirects, no automatic retries (one receipt, one request), no proxy taken from the environment, and a size limit on responses.
+- **Provider credentials:** read from an environment variable or a file that only its owner can read (anything wider stops startup), held in memory that is wiped on drop, never printed.
+- **TLS:** `rustls` with `aws-lc-rs`, offering the hybrid post-quantum key exchange (X25519MLKEM768) first, certificates checked by the operating system's verifier. A test guards the key exchange order and `cargo deny` bans a second crypto provider.
 - **Data minimization:** findings carry the class, position and rule, never the matched value. Error messages never echo request content. The audit log stores no prompt content.
-
-Decided for the next milestones:
-
-- TLS through `rustls` with `aws-lc-rs`, including hybrid post-quantum key exchange.
 
 What it does **not** do, by design:
 
@@ -136,7 +135,7 @@ Threats, mitigations and residual risks are listed in the [threat model](docs/TH
 ## Engineering standards
 
 - `#![forbid(unsafe_code)]` in every crate; `unwrap` and `expect` denied outside tests.
-- No home-made cryptography: only established crates (`sha2` today; `rustls` with `aws-lc-rs` next).
+- No home-made cryptography: only established crates (`sha2`, `rustls` with `aws-lc-rs`).
 - Every buffer, decoding step and recursion has a configurable limit.
 - Detectors and policy rules are written test-first against golden vectors computed independently.
 - No real provider is ever called in tests: a [mock provider](tools/mock-upstream) speaks both APIs, including streaming and failure modes.
@@ -156,7 +155,7 @@ resguardo (binary) ─┬─ resguardo-core      domain types, configuration, vi
 | Milestone | Scope | Status |
 | --- | --- | --- |
 | **M0** | Workspace, licenses, ADRs, threat model draft | ✅ Done |
-| **M1** | Basic proxy: both APIs, virtual keys, egress allowlist | 🚧 4 of 6 done |
+| **M1** | Basic proxy: both APIs, virtual keys, egress allowlist | 🚧 5 of 6 done |
 | M2 | Scanning engine: de-obfuscation, secrets, invisible text | ⏳ |
 | M3 | Spanish validators, policy and redaction | ⏳ |
 | M4 | Streaming: SSE parser, overlap window, response controls | ⏳ |
@@ -170,7 +169,7 @@ resguardo (binary) ─┬─ resguardo-core      domain types, configuration, vi
 - [x] M1.2 Mock OpenAI and Anthropic server
 - [x] M1.3 Virtual keys (`resguardo key create`), lookup by hash, expiry
 - [x] M1.4 Strict parsing and full-body text extraction for both APIs, unknown fields untouched
-- [ ] M1.5 Egress: allowlist, credential injection, TLS, no redirects
+- [x] M1.5 Egress: allowlist, credential injection, post-quantum TLS, no redirects or retries
 - [ ] M1.6 HTTP server and errors; the official SDKs reach the mock through Resguardo
 
 </details>
