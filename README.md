@@ -50,13 +50,22 @@ flowchart LR
     A --> L[("Signed audit log")]
 ```
 
+From the application's side, only two lines change:
+
 ```python
-client = OpenAI(base_url="http://127.0.0.1:8787/v1", api_key="rsg_...")  # a virtual key
-client.chat.completions.create(model="gpt-4.1-mini", messages=[
-    {"role": "user", "content": "Mi DNI es 12345678Z"},
-])
-# The provider receives "Mi DNI es [REDACTED:es_id:1]", and the log gets a signed receipt.  (v0.1)
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://127.0.0.1:8787/v1",  # Resguardo instead of api.openai.com
+    api_key="rsg_...",                     # a virtual key instead of the real one
+)
+client.chat.completions.create(
+    model="gpt-4.1-mini",
+    messages=[{"role": "user", "content": "Mi DNI es 12345678Z"}],
+)
 ```
+
+The provider receives `Mi DNI es [REDACTED:es_id:1]`, and a signed receipt records the decision. *(Redaction arrives in M3.)*
 
 ## Try it
 
