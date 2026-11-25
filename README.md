@@ -26,7 +26,7 @@
 ---
 
 > [!WARNING]
-> **Pre-alpha.** Configuration validation, virtual keys and the mock provider work today; the proxy itself arrives with milestone M1. Sections marked *planned* describe v0.1. Do not use it to protect anything yet.
+> **Pre-alpha.** Configuration validation, virtual keys, strict request parsing and the mock provider work today; the proxy itself arrives with milestone M1. Sections marked *planned* describe v0.1. Do not use it to protect anything yet.
 
 ## Why Resguardo
 
@@ -114,13 +114,12 @@ What is already enforced in code:
 
 - **Virtual keys:** 256 bits from the operating system's random generator, encoded without modulo bias; only their SHA-256 is stored; printed once and never logged. Two different keys in `Authorization` and `x-api-key` are rejected, not resolved.
 - **Configuration:** unknown fields are errors, not ignored settings. Upstreams must be `https://`; plain HTTP is accepted only for `localhost` with an explicit flag. URLs with credentials, queries or fragments are rejected.
-- **Data minimization:** findings carry the class, position and rule, never the matched value. The audit log stores no prompt content.
+- **Strict parsing:** bodies with duplicate keys (even when escaped differently), invalid UTF-8 or trailing data are rejected, so the scanner and the provider can never read different values. Only known query parameters pass, and the upstream path is fixed.
+- **Full-body extraction:** every string in the request is handed to the scanner with its JSON Pointer, including content block types that do not exist yet. Only images, audio and PDFs are skipped, and counted.
+- **Data minimization:** findings carry the class, position and rule, never the matched value. Error messages never echo request content. The audit log stores no prompt content.
 
 Decided for the next milestones:
 
-- Strict JSON: bodies with duplicate keys are rejected, so the scanner and the provider can never read different values.
-- Every string in `messages`, `system` and `tools` is scanned, including content block types that do not exist yet.
-- Only known query parameters are forwarded; anything else could carry data out unscanned.
 - TLS through `rustls` with `aws-lc-rs`, including hybrid post-quantum key exchange.
 
 What it does **not** do, by design:
@@ -157,7 +156,7 @@ resguardo (binary) ─┬─ resguardo-core      domain types, configuration, vi
 | Milestone | Scope | Status |
 | --- | --- | --- |
 | **M0** | Workspace, licenses, ADRs, threat model draft | ✅ Done |
-| **M1** | Basic proxy: both APIs, virtual keys, egress allowlist | 🚧 3 of 6 done |
+| **M1** | Basic proxy: both APIs, virtual keys, egress allowlist | 🚧 4 of 6 done |
 | M2 | Scanning engine: de-obfuscation, secrets, invisible text | ⏳ |
 | M3 | Spanish validators, policy and redaction | ⏳ |
 | M4 | Streaming: SSE parser, overlap window, response controls | ⏳ |
@@ -170,7 +169,7 @@ resguardo (binary) ─┬─ resguardo-core      domain types, configuration, vi
 - [x] M1.1 Domain types and validated configuration (`resguardo config check`)
 - [x] M1.2 Mock OpenAI and Anthropic server
 - [x] M1.3 Virtual keys (`resguardo key create`), lookup by hash, expiry
-- [ ] M1.4 Strict parsing and normalization of both APIs, unknown fields untouched
+- [x] M1.4 Strict parsing and full-body text extraction for both APIs, unknown fields untouched
 - [ ] M1.5 Egress: allowlist, credential injection, TLS, no redirects
 - [ ] M1.6 HTTP server and errors; the official SDKs reach the mock through Resguardo
 
@@ -187,7 +186,8 @@ Target for v0.1.0: February 2027.
   [0003 signed audit log](docs/adr/0003-signed-audit-log-format.md) ·
   [0004 deterministic detectors](docs/adr/0004-deterministic-detectors-only.md) ·
   [0005 OpenAI-compatible upstream](docs/adr/0005-openai-compatible-upstream.md) ·
-  [0006 TLS crypto provider](docs/adr/0006-tls-crypto-provider.md)
+  [0006 TLS crypto provider](docs/adr/0006-tls-crypto-provider.md) ·
+  [0007 strict request parsing](docs/adr/0007-strict-request-parsing.md)
 - Research: [running Claude Code through Resguardo](docs/research/claude-code-gateway.md)
 - Ideas kept out of v0.1: [LATER.md](LATER.md)
 

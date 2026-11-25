@@ -79,6 +79,7 @@ This document says what Resguardo v0.1 protects, against whom, and, just as impo
 | T16 | Supply chain (A6) | A malicious or vulnerable dependency | `cargo deny`: advisories, allowed licenses and sources; few dependencies; no `unsafe` in our code | Transitive compromise not caught by advisories; no `cargo-vet`, SBOM or signed builds in v0.1 (SBOM and attestations if time allows) | `deny.toml` |
 | T17 | Side channels | DNS queries, timing, response sizes | Not addressed beyond the lab's network isolation | Low-bandwidth channels remain | — |
 | T18 | Information leak through endpoints | `/metrics`, `/healthz`, error bodies | `/metrics` only on the local interface and without content; errors carry only code, class and request id | — | Contract tests |
+| T19 | Parser differential (A2, A4) | The body is crafted so the scanner and the provider read different values: duplicate keys, escaped key names, a query string, fields outside the conversation | Strict parsing: duplicate keys (after unescaping), invalid UTF-8, unpaired surrogates and trailing data are rejected; every string in the body is scanned, not only known fields; only known query parameters pass; the upstream path is fixed, never taken from the client (ADR 0007) | Binary payloads and numbers are not scanned; header values are covered in M1.5 | `resguardo-proto` tests |
 
 ## 6. If a component is compromised
 
@@ -97,6 +98,8 @@ This is the biggest difference from the target architecture, where a compromised
 - Prompt injection itself. Resguardo limits what an injection can send out; it does not detect it.
 - Actions the application takes on its own: tool execution, MCP traffic, other HTTP calls (assumption 1).
 - Embeddings, images, audio, the Responses API and other providers: those routes return 404 and are not proxied.
+- Images, audio and PDFs **inside** a chat request (base64 or `data:` URLs) are forwarded without scanning; their count is recorded. Text hidden in them is not detected (ADR 0007).
+- Numbers in the JSON body are not scanned: a card number sent as a JSON number is not detected.
 - Restoring redacted values in responses.
 - Anything once the host is compromised.
 
