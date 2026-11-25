@@ -2,6 +2,17 @@
 
 [graph]
 all-features = true
+# Only the platforms Resguardo is built for. Without this, crates used only on Android or
+# WebAssembly (pulled in by rustls-platform-verifier) are checked too, although they are
+# never compiled into Resguardo.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
 
 [advisories]
 # Fail on any vulnerability or unmaintained/yanked crate unless ignored here with a reason.
@@ -38,6 +49,8 @@ deny = [
     { crate = "resguardo-proto", wrappers = ["resguardo"] },
     { crate = "resguardo-egress", wrappers = ["resguardo"] },
     { crate = "resguardo-audit", wrappers = ["resguardo", "resguardo-egress"] },
+    # ADR 0006: TLS uses aws-lc-rs. A second crypto provider must not slip in.
+    { crate = "ring", reason = "ADR 0006: rustls uses aws-lc-rs" },
 ]
 
 [sources]
