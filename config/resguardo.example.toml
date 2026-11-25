@@ -1,0 +1,68 @@
+# Resguardo example configuration (design document, Annex E).
+# Any missing required field or invalid value stops Resguardo from starting.
+# Validate without starting: `resguardo config check --config <path>`.
+
+[server]
+listen = "127.0.0.1:8787"          # local only by default
+max_body_bytes = 1048576           # 1 MiB
+request_timeout_secs = 120
+
+[audit]
+path = "./data/audit.jsonl"
+fsync = true                       # the decision entry reaches disk before anything is sent
+signing_key = "./data/signing.key" # Ed25519 private key; 0600 permissions required
+public_key = "./data/signing.pub"  # give this to whoever audits the log
+
+[scan]
+max_decode_depth = 2
+max_derived_bytes = 65536
+entropy_threshold = 4.5            # bits per character
+entropy_min_len = 20
+
+[stream]
+overlap_bytes = 256
+buffer_flush_bytes = 2048
+
+# Global action per data class: allow, flag, redact or block. Every class is required.
+[policy.actions]
+secret = "block"
+secret_candidate = "flag"
+es_id = "redact"
+iban = "redact"
+card = "block"
+phone = "redact"
+email = "redact"
+invisible_text = "redact"
+
+[response]
+strip_remote_images = true
+strip_links_outside = true
+allowed_link_hosts = ["docs.example.com"]
+
+# Egress destinations. Nothing outside this list can receive traffic.
+[[upstream]]
+provider = "openai"
+base_url = "https://api.openai.com"
+credential_env = "OPENAI_API_KEY"
+
+[[upstream]]
+provider = "anthropic"
+base_url = "https://api.anthropic.com"
+credential_file = "/run/secrets/anthropic_key"   # 0600 permissions required
+
+# Any server speaking the OpenAI Chat Completions format (ADR 0005):
+# an existing gateway, vLLM, Ollama... The credential is optional.
+# [[upstream]]
+# provider = "openai_compatible"
+# base_url = "http://127.0.0.1:8000"
+# allow_insecure_upstream = true                 # plain HTTP, accepted only for local hosts
+
+# Principals. `key_sha256` is printed by `resguardo key create`.
+[[principal]]
+id = "support-bot"
+key_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"  # replace
+stream_mode = "passthrough_abort"
+requests_per_minute = 60
+models.openai = ["gpt-4.1-mini"]
+models.anthropic = ["claude-sonnet-4-5"]
+actions.email = "allow"            # this agent may send email addresses to the model
