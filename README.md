@@ -1,13 +1,24 @@
 <h1 align="center">Resguardo</h1>
 
 <p align="center">
-  <strong>An egress boundary for LLM traffic: nothing leaves without policy, and every decision leaves a signed receipt.</strong>
+  <strong>An egress boundary for LLM traffic.</strong><br>
+  Nothing leaves without policy, and every decision leaves a signed receipt.
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"></a>
-  <img alt="Language: Rust" src="https://img.shields.io/badge/language-Rust-orange.svg">
+  <img alt="Rust 2024 edition" src="https://img.shields.io/badge/rust-2024_edition-orange.svg">
+  <img alt="unsafe: forbidden" src="https://img.shields.io/badge/unsafe-forbidden-success.svg">
   <img alt="Status: pre-alpha" src="https://img.shields.io/badge/status-pre--alpha-lightgrey.svg">
+</p>
+
+<p align="center">
+  <a href="#why-resguardo">Why</a> ·
+  <a href="#how-a-request-flows">How it works</a> ·
+  <a href="#try-it-today">Try it</a> ·
+  <a href="#security-model">Security model</a> ·
+  <a href="#roadmap">Roadmap</a> ·
+  <a href="#design-documents">Design</a>
 </p>
 
 <p align="center"><em>resguardo</em> (Spanish): both a safeguard and a receipt.</p>
@@ -15,56 +26,71 @@
 ---
 
 > [!WARNING]
-> **Pre-alpha.** The design is done and implementation is under way: configuration validation (`resguardo config check`), virtual key generation (`resguardo key create`) and a mock provider for tests work today; the proxy itself does not yet. This README describes what v0.1 will do. Do not use it to protect anything.
+> **Pre-alpha.** Configuration validation, virtual keys and the mock provider work today; the proxy itself arrives with milestone M1. Sections marked *planned* describe v0.1. Do not use it to protect anything yet.
 
-## What it is
+## Why Resguardo
 
-Resguardo is a single Rust binary that sits between your application and the OpenAI and Anthropic APIs, or in front of any OpenAI-compatible server you already run (LiteLLM, vLLM, Ollama…). Your app talks to it exactly as it would talk to the provider: change the base URL and the key, nothing else.
+Every prompt your application sends to a model provider leaves your network. It may carry customer data, API keys pasted into a support chat, or whatever a prompt injection convinced an agent to read. Most teams cannot answer two simple questions: **what left, and who allowed it?**
 
-```mermaid
-flowchart LR
-    App["Your app<br/>(no internet access)"] -- "virtual key rsg_…" --> R
-    subgraph R["resguardo"]
-        direction LR
-        I[Identity] --> S[Scan] --> P[Policy] --> E[Egress]
-    end
-    E -- "real key, TLS" --> M["OpenAI / Anthropic"]
-    M -. "streamed response, scanned" .-> App
-    P --> L[("Signed audit log")]
-    L --> V["resguardo verify-log<br/>(public key only)"]
-```
-
-## Why it is different
-
-Many proxies redact personal data before calling a model. Resguardo is built around a combination of four things:
+Resguardo is a single Rust binary that sits between your applications and the OpenAI and Anthropic APIs, or in front of any OpenAI-compatible server you already run (LiteLLM, vLLM, Ollama…). Applications keep using the official SDKs: change the base URL and the key, nothing else.
 
 | | |
 | --- | --- |
-| 🔒 **Closed by default** | Only listed providers and models get through. Your app never sees the real provider key. Any internal error blocks the request instead of letting it pass. |
-| 🧾 **A signed receipt for every decision** | A hash-chained log, canonicalized with RFC 8785 and signed with Ed25519, that anyone can verify with the public key. It stores no prompt content. |
-| 🇪🇸 **Spanish data, validated** | DNI, NIE, CIF and IBAN are detected only when their check digit is valid, and the false-positive rate is measured and published. |
-| ⚡ **One small binary** | Rust, no `unsafe`, and a published benchmark of the latency it adds. |
+| 🔒 **Closed by default** | Only listed providers and models get through. Applications never see a real provider key. Any internal error blocks the request instead of letting it pass. |
+| 🧾 **A signed receipt for every decision** | A hash-chained, Ed25519-signed log (RFC 8785 canonical JSON) that anyone can verify with the public key. It records decisions, never prompt content. |
+| 🇪🇸 **Spanish data, validated** | DNI, NIE, CIF and IBAN are detected only when their check digit is valid, and the false-positive rate will be measured on a public corpus and published. |
+| ⚡ **One small binary** | No database, no runtime services: a TOML file, a JSONL log and a key pair. Latency overhead will be benchmarked and published. |
 
-## Planned for v0.1
+## How a request flows
 
-- OpenAI Chat Completions and Anthropic Messages, with and without streaming
-- Any OpenAI-compatible upstream at its own URL, so Resguardo can sit in front of an existing gateway or a self-hosted model
-- Virtual keys per application; provider credentials known only to Resguardo
-- Per-application allowlists of providers and models, size limits and rate limits
-- Deterministic detectors for secrets (cloud keys, tokens, private keys, JWTs, high entropy), invisible characters, Spanish IDs, IBANs, cards (Luhn), Spanish phones and emails
-- De-obfuscation before scanning: Unicode NFKC, zero-width characters, Base64, hex and URL encoding
-- Per data class actions: `allow`, `flag`, `redact` or `block`
-- Response controls: strip remote Markdown images and links to hosts outside the allowlist, which are the usual exfiltration path after a prompt injection
-- Streaming scanned with an overlapping window, so a secret split across two chunks is still caught
-- `resguardo verify-log` to check the whole audit chain
-- An exfiltration lab: the same attack with and without Resguardo, on an isolated Docker network
+```mermaid
+flowchart LR
+    App["Your app<br/>(no direct internet)"] -- "virtual key rsg_…" --> R
+    subgraph R["resguardo"]
+        direction LR
+        I[Identity] --> S[Scan] --> P[Policy] --> A[Receipt] --> E[Egress]
+    end
+    E -- "real key, verified TLS" --> M["OpenAI · Anthropic<br/>OpenAI-compatible"]
+    M -. "streamed response, scanned" .-> App
+    A --> L[("Signed audit log")]
+    L --> V["resguardo verify-log<br/>(public key only)"]
+```
 
-## How it will look
+1. **Identity.** The virtual key is hashed and looked up. Unknown or expired keys get `401`.
+2. **Limits.** Body size, message count and requests per minute, per application.
+3. **Scan.** Text is de-obfuscated (Unicode NFKC, invisible characters, Base64, hex, URL encoding) and checked by deterministic detectors.
+4. **Policy.** Each data class maps to `allow`, `flag`, `redact` or `block`; the most restrictive wins. Nothing allowed explicitly gets through.
+5. **Receipt.** The decision is written and signed **before** anything leaves. If it cannot be written, the request is blocked.
+6. **Egress.** Only to configured hosts, with the real credential injected, verified TLS and no redirects.
+7. **Response.** Streamed back through a scanner that removes remote images and links outside an allowlist, the usual exfiltration path after a prompt injection.
+
+## Try it today
+
+Requires a stable Rust toolchain (pinned by `rust-toolchain.toml`).
 
 ```sh
-resguardo init                            # example config, log folder, signing key pair
-resguardo key create --principal support-bot
+git clone https://github.com/christianivanov/resguardo && cd resguardo
+
+# Validate a configuration: every problem is reported at once, and Resguardo refuses to start on any of them.
+cargo run -p resguardo -- config check --config config/resguardo.example.toml
+# config/resguardo.example.toml: OK (2 upstream(s), 1 principal(s))
+
+# Create a virtual key: the key goes to stdout once, its SHA-256 to stderr.
+cargo run -p resguardo -- key create --principal support-bot
+# rsg_<43 random Base62 characters>
+# Add this line to the [[principal]] entry with id = "support-bot":
+#     key_sha256 = "<64 hex characters>"
+
+# Start the fake OpenAI and Anthropic server used by the tests.
+cargo run -p resguardo-mock-upstream -- --listen 127.0.0.1:9000
+```
+
+### Planned usage (v0.1)
+
+```sh
+resguardo init                                   # example config, log folder, signing key pair
 resguardo run --config resguardo.toml
+resguardo verify-log data/audit.jsonl --pubkey data/signing.pub
 ```
 
 ```python
@@ -78,41 +104,92 @@ client.chat.completions.create(
 # The provider receives: "Mi DNI es [REDACTED:es_id:1]"
 ```
 
-```sh
-resguardo verify-log data/audit.jsonl --pubkey data/signing.pub
-```
+Coding agents work the same way: Claude Code only needs `ANTHROPIC_BASE_URL` pointed at Resguardo ([research notes](docs/research/claude-code-gateway.md)).
 
-## What it does not do
+## Security model
 
-Being honest about limits is part of the design:
+**Resguardo fails closed.** A scanning error, a policy error, an unwritable audit log, a malformed request or an ambiguous configuration all end in a blocked request, never in an unscanned one.
+
+What is already enforced in code:
+
+- **Virtual keys:** 256 bits from the operating system's random generator, encoded without modulo bias; only their SHA-256 is stored; printed once and never logged. Two different keys in `Authorization` and `x-api-key` are rejected, not resolved.
+- **Configuration:** unknown fields are errors, not ignored settings. Upstreams must be `https://`; plain HTTP is accepted only for `localhost` with an explicit flag. URLs with credentials, queries or fragments are rejected.
+- **Data minimization:** findings carry the class, position and rule, never the matched value. The audit log stores no prompt content.
+
+Decided for the next milestones:
+
+- Strict JSON: bodies with duplicate keys are rejected, so the scanner and the provider can never read different values.
+- Every string in `messages`, `system` and `tools` is scanned, including content block types that do not exist yet.
+- Only known query parameters are forwarded; anything else could carry data out unscanned.
+- TLS through `rustls` with `aws-lc-rs`, including hybrid post-quantum key exchange.
+
+What it does **not** do, by design:
 
 - It does not detect prompt injection; it limits what an injection can send out.
 - It does not find personal data without a structured format, such as names or addresses.
-- It only protects what goes through it: your app must not be able to reach the internet directly.
+- It does not scan images in v0.1.
+- It only protects traffic that goes through it: applications must not reach the internet directly.
 - In pass-through streaming mode, text already sent before a block cannot be recalled.
-- Whoever controls the host and the private key can rewrite the log; external anchoring comes in v0.2.
+- Whoever controls the host and the signing key can rewrite the log; external anchoring comes in v0.2.
 
-The full list is in the [threat model](docs/THREAT_MODEL.md).
+Threats, mitigations and residual risks are listed in the [threat model](docs/THREAT_MODEL.md).
+
+## Engineering standards
+
+- `#![forbid(unsafe_code)]` in every crate; `unwrap` and `expect` denied outside tests.
+- No home-made cryptography: only established crates (`sha2` today; `rustls` with `aws-lc-rs` next).
+- Every buffer, decoding step and recursion has a configurable limit.
+- Detectors and policy rules are written test-first against golden vectors computed independently.
+- No real provider is ever called in tests: a [mock provider](tools/mock-upstream) speaks both APIs, including streaming and failure modes.
+- `cargo deny` enforces licenses, sources and the crate boundaries below.
+
+```text
+resguardo (binary) ─┬─ resguardo-core      domain types, configuration, virtual keys
+                    ├─ resguardo-scan      detectors (pure: no I/O, no clock)
+                    ├─ resguardo-policy    decisions (pure)
+                    ├─ resguardo-proto     OpenAI and Anthropic formats, SSE
+                    ├─ resguardo-audit     hash-chained, signed log
+                    └─ resguardo-egress    allowlist, credentials, TLS (cannot depend on scan or policy)
+```
 
 ## Roadmap
 
 | Milestone | Scope | Status |
 | --- | --- | --- |
-| M0 | Workspace, licenses, ADRs, threat model draft | ✅ Done |
-| M1 | Basic proxy: both APIs without streaming, virtual keys, egress allowlist | 🚧 In progress: config, mock provider and virtual keys done |
+| **M0** | Workspace, licenses, ADRs, threat model draft | ✅ Done |
+| **M1** | Basic proxy: both APIs, virtual keys, egress allowlist | 🚧 3 of 6 done |
 | M2 | Scanning engine: de-obfuscation, secrets, invisible text | ⏳ |
 | M3 | Spanish validators, policy and redaction | ⏳ |
 | M4 | Streaming: SSE parser, overlap window, response controls | ⏳ |
 | M5 | Signed audit log and `verify-log` | ⏳ |
 | M6 | Accuracy corpus, benchmark, exfiltration lab, release | ⏳ |
 
+<details>
+<summary>M1 in detail</summary>
+
+- [x] M1.1 Domain types and validated configuration (`resguardo config check`)
+- [x] M1.2 Mock OpenAI and Anthropic server
+- [x] M1.3 Virtual keys (`resguardo key create`), lookup by hash, expiry
+- [ ] M1.4 Strict parsing and normalization of both APIs, unknown fields untouched
+- [ ] M1.5 Egress: allowlist, credential injection, TLS, no redirects
+- [ ] M1.6 HTTP server and errors; the official SDKs reach the mock through Resguardo
+
+</details>
+
 Target for v0.1.0: February 2027.
 
 ## Design documents
 
 - [Threat model](docs/THREAT_MODEL.md)
-- Architecture decisions: [single process](docs/adr/0001-single-process-with-crate-boundary.md), [closed by default](docs/adr/0002-closed-by-default.md), [signed audit log](docs/adr/0003-signed-audit-log-format.md), [deterministic detectors](docs/adr/0004-deterministic-detectors-only.md), [OpenAI-compatible upstream](docs/adr/0005-openai-compatible-upstream.md), [TLS crypto provider](docs/adr/0006-tls-crypto-provider.md)
+- Architecture decisions:
+  [0001 single process](docs/adr/0001-single-process-with-crate-boundary.md) ·
+  [0002 closed by default](docs/adr/0002-closed-by-default.md) ·
+  [0003 signed audit log](docs/adr/0003-signed-audit-log-format.md) ·
+  [0004 deterministic detectors](docs/adr/0004-deterministic-detectors-only.md) ·
+  [0005 OpenAI-compatible upstream](docs/adr/0005-openai-compatible-upstream.md) ·
+  [0006 TLS crypto provider](docs/adr/0006-tls-crypto-provider.md)
 - Research: [running Claude Code through Resguardo](docs/research/claude-code-gateway.md)
+- Ideas kept out of v0.1: [LATER.md](LATER.md)
 
 ## Contributing
 
