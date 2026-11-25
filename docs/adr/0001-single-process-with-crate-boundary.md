@@ -1,6 +1,6 @@
 # 0001. Single process with the egress boundary drawn by crates
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-25
 
 ## Context
