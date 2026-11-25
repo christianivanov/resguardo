@@ -11,6 +11,7 @@ use std::fmt;
 use std::ops::Range;
 
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 /// Upstream API a request is sent to.
 ///
@@ -54,9 +55,16 @@ impl fmt::Display for Provider {
 pub struct PrincipalId(String);
 
 impl PrincipalId {
-    /// Builds an id after the caller has validated it (see `config`).
-    pub(crate) fn new(id: String) -> Self {
-        Self(id)
+    /// Accepts 1 to 64 characters of `a-z`, `0-9`, `-` or `_`, starting with a letter or digit.
+    /// The id appears in audit entries and file names, so its alphabet stays small.
+    pub fn parse(id: &str) -> Option<Self> {
+        let valid_byte =
+            |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_';
+        let mut bytes = id.bytes();
+        let valid = (1..=64).contains(&id.len())
+            && matches!(bytes.next(), Some(b) if b.is_ascii_lowercase() || b.is_ascii_digit())
+            && bytes.all(valid_byte);
+        valid.then(|| Self(id.to_owned()))
     }
 
     pub fn as_str(&self) -> &str {
@@ -79,6 +87,11 @@ impl VirtualKeyHash {
     pub fn parse(hex: &str) -> Option<Self> {
         let valid = hex.len() == 64 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
         valid.then(|| Self(hex.to_owned()))
+    }
+
+    /// For hashes computed by this crate, which are lowercase hex by construction.
+    pub(crate) fn from_computed(hex: String) -> Self {
+        Self(hex)
     }
 
     pub fn as_str(&self) -> &str {
@@ -131,8 +144,8 @@ pub struct Principal {
     /// Overrides the global action for these classes.
     pub actions: BTreeMap<DataClass, Action>,
     pub stream_mode: StreamMode,
-    /// ISO 8601 UTC. Parsed and enforced with virtual keys (M1.3).
-    pub expires_at: Option<String>,
+    /// The virtual key stops working at this instant (UTC). Written as RFC 3339 in the config.
+    pub expires_at: Option<OffsetDateTime>,
 }
 
 /// Normalized request. Unknown fields stay in `raw` and are forwarded untouched.

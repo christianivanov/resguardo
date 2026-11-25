@@ -12,6 +12,8 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use serde::Deserialize;
+use time::format_description::well_known::Rfc3339;
+use time::{OffsetDateTime, UtcOffset};
 use url::{Host, Url};
 
 use crate::domain::{
@@ -528,13 +530,16 @@ fn validate_principals(
         let location = format!("[[principal]] #{} ('{}')", index + 1, principal.id);
         let before = problems.len();
 
-        if !is_principal_id(&principal.id) {
-            problems.push(format!(
+        let id = PrincipalId::parse(&principal.id);
+        match &id {
+            None => problems.push(format!(
                 "{location}: id must be 1 to 64 characters of a-z, 0-9, '-' or '_', \
                  starting with a letter or digit"
-            ));
-        } else if !seen_ids.insert(principal.id.clone()) {
-            problems.push(format!("{location}: duplicate id"));
+            )),
+            Some(id) if !seen_ids.insert(id.clone()) => {
+                problems.push(format!("{location}: duplicate id"));
+            }
+            Some(_) => {}
         }
 
         let key_hash = VirtualKeyHash::parse(&principal.key_sha256);
@@ -547,6 +552,11 @@ fn validate_principals(
             )),
             Some(_) => {}
         }
+
+        let expires_at = principal
+            .expires_at
+            .as_deref()
+            .and_then(|value| parse_expiry(&location, value, problems));
 
         validate_models(&location, &principal.models, declared_upstreams, problems);
         validate_actions(&location, &principal.actions, false, problems);
@@ -575,16 +585,16 @@ fn validate_principals(
             ));
         }
 
-        if let (true, Some(key_hash)) = (problems.len() == before, key_hash) {
+        if let (true, Some(key_hash), Some(id)) = (problems.len() == before, key_hash, id) {
             principals.push(ConfiguredPrincipal {
                 key_hash,
                 principal: Principal {
-                    id: PrincipalId::new(principal.id),
+                    id,
                     allowed: principal.models,
                     limits,
                     actions: principal.actions,
                     stream_mode: principal.stream_mode,
-                    expires_at: principal.expires_at,
+                    expires_at,
                 },
             });
         }
@@ -592,12 +602,19 @@ fn validate_principals(
     principals
 }
 
-fn is_principal_id(id: &str) -> bool {
-    let valid_byte = |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_';
-    let mut bytes = id.bytes();
-    (1..=64).contains(&id.len())
-        && matches!(bytes.next(), Some(b) if b.is_ascii_lowercase() || b.is_ascii_digit())
-        && bytes.all(valid_byte)
+/// RFC 3339 with an explicit offset, normalized to UTC. A date without a time or offset is
+/// rejected: "2027-02-09" would leave it unclear in which time zone the key stops working.
+fn parse_expiry(location: &str, value: &str, problems: &mut Vec<String>) -> Option<OffsetDateTime> {
+    match OffsetDateTime::parse(value, &Rfc3339) {
+        Ok(instant) => Some(instant.to_offset(UtcOffset::UTC)),
+        Err(_) => {
+            problems.push(format!(
+                "{location}: expires_at '{value}' must be an RFC 3339 timestamp with an offset, \
+                 for example 2027-02-09T00:00:00Z"
+            ));
+            None
+        }
+    }
 }
 
 fn validate_models(
@@ -927,6 +944,28 @@ credential_env = "OPENAI_API_KEY"
             panic!("expected validation problems");
         };
         assert!(problems.len() >= 4, "{problems:#?}");
+    }
+
+    #[test]
+    fn expires_at_is_parsed_and_normalized_to_utc() {
+        let p = principal("bot", KEY_A, "expires_at = \"2027-02-09T01:00:00+01:00\"");
+        let config = parse(&[BASE, OPENAI_UPSTREAM, &p]).unwrap();
+        let expires_at = config.principals[0].principal.expires_at.unwrap();
+        assert_eq!(expires_at.offset(), UtcOffset::UTC);
+        assert_eq!(expires_at.unix_timestamp(), 1_802_131_200); // 2027-02-09T00:00:00Z
+    }
+
+    #[test]
+    fn expires_at_without_time_or_offset_is_rejected() {
+        for value in [
+            "2027-02-09",
+            "2027-02-09T00:00:00",
+            "tomorrow",
+            "2027-13-01T00:00:00Z",
+        ] {
+            let p = principal("bot", KEY_A, &format!("expires_at = \"{value}\""));
+            assert_rejected(&[BASE, OPENAI_UPSTREAM, &p], "RFC 3339");
+        }
     }
 
     #[test]
