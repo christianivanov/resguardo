@@ -9,3 +9,20 @@ authors.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+resguardo-core.workspace = true
+# `rustls` = rustls with the aws-lc-rs crypto provider and the OS certificate verifier (ADR 0006).
+reqwest = { workspace = true, features = ["rustls"] }
+# Only to turn on `prefer-post-quantum`: reqwest disables rustls defaults, which would offer
+# the hybrid X25519MLKEM768 key exchange last instead of first (ADR 0006).
+rustls = { workspace = true, features = ["prefer-post-quantum"] }
+secrecy.workspace = true
+thiserror.workspace = true
+url.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+resguardo-mock-upstream.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
