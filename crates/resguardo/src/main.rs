@@ -3,9 +3,11 @@
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
+use resguardo::server::{App, serve};
 use resguardo_core::virtual_key::RANDOM_BYTES;
 use resguardo_core::{Config, OffsetDateTime, PrincipalId, VirtualKey};
 
@@ -20,6 +22,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Start the proxy.
+    Run {
+        /// Path to the configuration file.
+        #[arg(long, default_value = "resguardo.toml")]
+        config: PathBuf,
+    },
     /// Configuration tools.
     Config {
         #[command(subcommand)]
@@ -56,6 +64,7 @@ enum KeyCommand {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
+        Command::Run { config } => run(&config),
         Command::Config {
             command: ConfigCommand::Check { config },
         } => config_check(&config),
@@ -95,6 +104,53 @@ fn load_config(path: &Path) -> anyhow::Result<Config> {
         }
     }
     Ok(config)
+}
+
+/// Loads everything first (config, credentials, listener), so a problem stops startup
+/// before any request is accepted.
+fn run(path: &Path) -> anyhow::Result<()> {
+    let config = load_config(path)?;
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("starting the async runtime")?;
+    runtime.block_on(async {
+        let app = Arc::new(App::from_config(&config)?);
+        let listener = tokio::net::TcpListener::bind(config.server.listen)
+            .await
+            .with_context(|| format!("listening on {}", config.server.listen))?;
+        eprintln!("resguardo listening on http://{}", listener.local_addr()?);
+        serve(listener, app, shutdown_signal())
+            .await
+            .context("serving")?;
+        eprintln!("resguardo stopped");
+        Ok(())
+    })
+}
+
+/// Ctrl-C or, on Unix, SIGTERM (what Docker, systemd and Kubernetes send).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        // If the handler cannot be installed, never resolve: keep serving.
+        if tokio::signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        () = ctrl_c => {}
+        () = terminate => {}
+    }
 }
 
 fn config_check(path: &Path) -> anyhow::Result<()> {

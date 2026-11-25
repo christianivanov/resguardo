@@ -15,7 +15,9 @@ authors = ["Christian Ivanov del Real"]
 #   resguardo (binary) -> all
 [workspace.dependencies]
 resguardo-core = { path = "crates/resguardo-core", version = "0.0.0" }
+resguardo-egress = { path = "crates/resguardo-egress", version = "0.0.0" }
 resguardo-mock-upstream = { path = "tools/mock-upstream", version = "0.0.0" }
+resguardo-proto = { path = "crates/resguardo-proto", version = "0.0.0" }
 
 # External crates. Versions checked on crates.io on 2026-11-25.
 anyhow = "1.0.105"
@@ -32,8 +34,9 @@ sha2 = "0.11.2"
 thiserror = "2.0.21"
 time = { version = "0.3.55", features = ["parsing"] }
 toml = "1.2.3"
-tokio = { version = "1.54.1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.54.1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 url = "2.5.9"
+uuid = { version = "1.29.3", default-features = false, features = ["std"] }
 zeroize = "1.9.2"
 
 [workspace.lints.rust]
