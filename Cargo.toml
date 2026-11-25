@@ -14,12 +14,12 @@ authors = ["Christian Ivanov del Real"]
 #   egress -> core, audit   (never scan or policy)
 #   resguardo (binary) -> all
 [workspace.dependencies]
-resguardo-core = { path = "crates/resguardo-core" }
-resguardo-scan = { path = "crates/resguardo-scan" }
-resguardo-policy = { path = "crates/resguardo-policy" }
-resguardo-proto = { path = "crates/resguardo-proto" }
-resguardo-egress = { path = "crates/resguardo-egress" }
-resguardo-audit = { path = "crates/resguardo-audit" }
+resguardo-core = { path = "crates/resguardo-core", version = "0.0.0" }
+resguardo-scan = { path = "crates/resguardo-scan", version = "0.0.0" }
+resguardo-policy = { path = "crates/resguardo-policy", version = "0.0.0" }
+resguardo-proto = { path = "crates/resguardo-proto", version = "0.0.0" }
+resguardo-egress = { path = "crates/resguardo-egress", version = "0.0.0" }
+resguardo-audit = { path = "crates/resguardo-audit", version = "0.0.0" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -1,0 +1,47 @@
+# cargo-deny configuration. Run locally with `cargo deny check`.
+
+[graph]
+all-features = true
+
+[advisories]
+# Fail on any vulnerability or unmaintained/yanked crate unless ignored here with a reason.
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Permissive licenses compatible with Apache-2.0. Anything else needs a discussion first.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+]
+confidence-threshold = 0.9
+unused-allowed-license = "allow"
+exceptions = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+# Crate boundaries (docs: Annex C). `wrappers` lists the only crates allowed to depend
+# on the banned crate directly; in particular resguardo-egress must never see scanning
+# or policy, so the egress side can become its own process later.
+deny = [
+    { crate = "resguardo-scan", wrappers = ["resguardo"] },
+    { crate = "resguardo-policy", wrappers = ["resguardo"] },
+    { crate = "resguardo-proto", wrappers = ["resguardo"] },
+    { crate = "resguardo-egress", wrappers = ["resguardo"] },
+    { crate = "resguardo-audit", wrappers = ["resguardo", "resguardo-egress"] },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
