@@ -1,0 +1,11 @@
+[package]
+name = "resguardo-policy"
+description = "Policy decision for Resguardo: principal, request and findings in, one decision out (pure function)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true

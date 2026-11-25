@@ -1,0 +1,11 @@
+[package]
+name = "resguardo-scan"
+description = "Deterministic scanning pipeline and detectors for Resguardo (pure functions)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true

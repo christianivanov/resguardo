@@ -1,0 +1,30 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/christianivanov/resguardo"
+authors = ["Christian Ivanov del Real"]
+
+# Internal crates. Allowed edges (docs/SOLUTION.md, Annex C):
+#   scan, policy, proto, audit -> core
+#   egress -> core, audit   (never scan or policy)
+#   resguardo (binary) -> all
+[workspace.dependencies]
+resguardo-core = { path = "crates/resguardo-core" }
+resguardo-scan = { path = "crates/resguardo-scan" }
+resguardo-policy = { path = "crates/resguardo-policy" }
+resguardo-proto = { path = "crates/resguardo-proto" }
+resguardo-egress = { path = "crates/resguardo-egress" }
+resguardo-audit = { path = "crates/resguardo-audit" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# No unwrap/expect outside tests (allowed in tests via clippy.toml).
+unwrap_used = "deny"
+expect_used = "deny"

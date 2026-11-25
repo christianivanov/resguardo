@@ -1,0 +1,11 @@
+[package]
+name = "resguardo-proto"
+description = "OpenAI and Anthropic request normalization and SSE parsing for Resguardo."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,11 @@
+[package]
+name = "resguardo-audit"
+description = "Hash-chained, Ed25519-signed audit log and verification for Resguardo."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
