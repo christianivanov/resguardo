@@ -1,0 +1,36 @@
+# Fuzz targets (milestone M4.5). Run with the nightly toolchain and cargo-fuzz:
+#   cargo +nightly fuzz run sse_parser -- -max_total_time=3600
+# A separate workspace, so libfuzzer-sys never becomes a dependency of the product crates.
+[package]
+name = "resguardo-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+# Checked on crates.io on 2026-11-26.
+libfuzzer-sys = "0.4.13"
+resguardo-proto = { path = "../crates/resguardo-proto" }
+# Already a workspace dependency (same version): reads destinations as a browser would.
+url = "2.5.9"
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "sse_parser"
+path = "fuzz_targets/sse_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "markdown"
+path = "fuzz_targets/markdown.rs"
+test = false
+doc = false
+bench = false

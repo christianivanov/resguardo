@@ -31,6 +31,9 @@ allow = [
     "Unicode-3.0",
     "Zlib",
     "CC0-1.0",
+    # Only libfuzzer-sys, in fuzz/: LLVM's libFuzzer code it bundles. fuzz/ is a separate
+    # workspace and never part of the Resguardo binary (milestone M4.5).
+    "NCSA",
 ]
 confidence-threshold = 0.9
 unused-allowed-license = "allow"
