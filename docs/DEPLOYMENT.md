@@ -46,7 +46,15 @@ Resguardo speaks plain HTTP to applications in v0.1. On the same host or a priva
 - **One instance, one log, one key pair.** Several instances need their own audit log and key each. Their rate limits are per instance.
 - **Back up the public key** away from the host: it is all an auditor needs, and it is how a log is trusted if the host is not.
 - **Copy the audit log off the host** regularly. The chain proves that entries were not changed, but deleting the last entries leaves a valid, shorter log (threat model, section 7). A copy elsewhere closes that.
-- **The log grows** without rotation in v0.1. Archive it while Resguardo is stopped, start a new file, and keep the old one with the public key that verifies it.
+- **The log grows** without rotation in v0.1: about 1.1 KB per request (a decision entry of about 600 bytes and an outcome of about 450), measured on the lab's log.
+
+  | Traffic | Per day | Per year |
+  | --- | --- | --- |
+  | 1,000 requests a day | about 1 MB | about 400 MB |
+  | 100,000 a day | about 110 MB | about 40 GB |
+  | 1 million a day | about 1.1 GB | about 400 GB |
+
+  Archive it while Resguardo is stopped, start a new file, and keep the old one with the public key that verifies it. Watch free space on the log's disk with your usual monitoring and alert well before it fills: a full disk makes Resguardo refuse every request. Rotation without stopping is the first item after v0.1.0 (`LATER.md`).
 - **Restart policy:** Resguardo refuses to start if its configuration, key or log is not right. Restart on failure, and alert on repeated failures rather than looping silently.
 - **Health:** `GET /healthz` answers 503 when the last audit write failed (a full disk, for example). While that lasts, every request is refused with `503 AUDIT_UNAVAILABLE` and nothing leaves.
 - **Rotating the key:** `resguardo init --rotate-key` with Resguardo stopped, then start it again. The first public key still verifies the whole log.

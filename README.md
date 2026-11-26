@@ -28,7 +28,7 @@ Every prompt your application sends to a model provider leaves your network. It 
 Resguardo is a single Rust binary between your applications and the OpenAI and Anthropic APIs, or any OpenAI-compatible server (LiteLLM, vLLM, Ollama). Applications keep their official SDKs: change the base URL and the key, nothing else. Resguardo blocks or redacts what must not leave, and signs a receipt for every decision.
 
 > [!WARNING]
-> **v0.1, not yet released.** Tested end to end with the official SDKs against a mock provider; not yet used in production. Read the [limits](#limits) first.
+> **v0.1, not yet released.** Tested end to end with the official SDKs against a mock provider and in a Docker exfiltration lab; not yet used in production. Read the [limits](#limits) first.
 
 ## See it stop an exfiltration
 
@@ -162,7 +162,7 @@ Both reproduce with one command: [`resguardo accuracy`](docs/ACCURACY.md) and [`
 | What Resguardo adds: parsing, scanning, policy, signing the receipt and flushing it to disk, the extra hop | **0.5 ms** | 4.0 ms |
 | The same without flushing the receipt (`fsync` off) | 0.25 ms | 0.28 ms |
 
-The p99 is the disk: now and then flushing the receipt before the request leaves takes longer. A runner is a shared virtual machine, so take these as an order of magnitude and measure on your own disk ([how](docs/BENCHMARKS.md)). Throughput under concurrency is not measured yet.
+The p99 is the disk: now and then flushing the receipt before the request leaves takes longer. A runner is a shared virtual machine, so take these as an order of magnitude and measure on your own disk ([how](docs/BENCHMARKS.md)). Scanning runs at about 17 MB/s, so the cost grows with the prompt: a few kilobytes of chat cost well under a millisecond, and 400 KB of context from a coding agent would take about 25 ms at that rate. Throughput under concurrency is not measured yet.
 
 ## How it compares
 
@@ -187,7 +187,7 @@ What it does not do: load balancing, fallbacks, caching, budgets, dashboards, em
 | M5 | Signed audit log, `resguardo init` and `resguardo verify-log` | ✅ |
 | M6 | Accuracy corpus, benchmark, exfiltration lab, deployment guide and release | 🚧 v0.1.0 tag pending |
 
-Next, in v0.2: model-based detectors for unstructured personal data, MCP traffic, workload identity (mTLS, SPIFFE), and timestamped, externally anchored receipts.
+Next: audit log segments that rotate without stopping and can be shipped off the host. Then, in v0.2: model-based detectors for unstructured personal data, MCP traffic, workload identity (mTLS, SPIFFE), and timestamped, externally anchored receipts.
 
 ## Limits
 
@@ -199,6 +199,7 @@ Being honest about limits is part of the design:
 - It speaks plain HTTP to applications: keep it on the same host or a private network, or put a TLS terminator in front.
 - With the default stream mode, the first half of a secret split across two stream events reaches the application before the stream is cut; `buffer` mode avoids it.
 - Whoever controls the host and the signing key can rewrite the log consistently, and deleting its last entries leaves a valid, shorter log. Keep copies elsewhere.
+- The audit log is one file that grows, about 1 KB per request, until the operator archives it with Resguardo stopped; if the disk fills, every request is refused. Size the disk and watch it ([deployment](docs/DEPLOYMENT.md#operating-it)).
 
 The full list, with what covers each limit later, is in the [threat model](docs/THREAT_MODEL.md#7-explicitly-not-protected-in-v01).
 
