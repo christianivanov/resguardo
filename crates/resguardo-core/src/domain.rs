@@ -143,6 +143,8 @@ pub struct Principal {
     pub limits: Limits,
     /// Overrides the global action for these classes.
     pub actions: BTreeMap<DataClass, Action>,
+    /// Overrides the global action for these limit flags: `Flag` or `Block` (ADR 0012).
+    pub scan_limits: BTreeMap<ScanLimit, Action>,
     pub stream_mode: StreamMode,
     /// The virtual key stops working at this instant (UTC). Written as RFC 3339 in the config.
     pub expires_at: Option<OffsetDateTime>,
@@ -270,6 +272,17 @@ pub enum ScanLimit {
 }
 
 impl ScanLimit {
+    pub const ALL: [ScanLimit; 2] = [ScanLimit::DecodeDepth, ScanLimit::DerivedBytes];
+
+    /// Action when the configuration sets none (ADR 0012): encoding three times is almost
+    /// never legitimate, while a large encoded block is common and its first part was scanned.
+    pub fn default_action(self) -> Action {
+        match self {
+            ScanLimit::DecodeDepth => Action::Block,
+            ScanLimit::DerivedBytes => Action::Flag,
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             ScanLimit::DecodeDepth => "decode_depth",

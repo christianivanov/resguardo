@@ -17,7 +17,8 @@ use time::{OffsetDateTime, UtcOffset};
 use url::{Host, Url};
 
 use crate::domain::{
-    Action, DataClass, Limits, Principal, PrincipalId, Provider, StreamMode, VirtualKeyHash,
+    Action, DataClass, Limits, Principal, PrincipalId, Provider, ScanLimit, StreamMode,
+    VirtualKeyHash,
 };
 
 /// Why a configuration was rejected.
@@ -50,6 +51,9 @@ pub struct Config {
     pub stream: StreamConfig,
     /// Global action for every request data class (`DataClass::REQUEST_CLASSES`).
     pub actions: BTreeMap<DataClass, Action>,
+    /// Global action for every limit flag (`ScanLimit::ALL`), with the defaults of ADR 0012
+    /// for those the file does not set.
+    pub scan_limits: BTreeMap<ScanLimit, Action>,
     pub response: ResponseConfig,
     pub upstreams: BTreeMap<Provider, Upstream>,
     pub principals: Vec<ConfiguredPrincipal>,
@@ -210,6 +214,8 @@ struct RawConfig {
 #[serde(deny_unknown_fields)]
 struct RawPolicy {
     actions: BTreeMap<DataClass, Action>,
+    #[serde(default)]
+    scan_limits: BTreeMap<ScanLimit, Action>,
 }
 
 #[derive(Deserialize)]
@@ -237,6 +243,8 @@ struct RawPrincipal {
     models: BTreeMap<Provider, Vec<String>>,
     #[serde(default)]
     actions: BTreeMap<DataClass, Action>,
+    #[serde(default)]
+    scan_limits: BTreeMap<ScanLimit, Action>,
     expires_at: Option<String>,
 }
 
@@ -258,6 +266,17 @@ impl RawConfig {
             true,
             &mut problems,
         );
+        validate_scan_limits(
+            "[policy.scan_limits] ",
+            &self.policy.scan_limits,
+            &mut problems,
+        );
+        let mut scan_limits = self.policy.scan_limits;
+        for limit in ScanLimit::ALL {
+            scan_limits
+                .entry(limit)
+                .or_insert_with(|| limit.default_action());
+        }
         let response = validate_response(self.response, &mut problems);
         // Declared even if invalid, so one bad upstream does not cascade into model errors.
         let declared: BTreeSet<Provider> = self.upstream.iter().map(|u| u.provider).collect();
@@ -281,6 +300,7 @@ impl RawConfig {
             scan: self.scan,
             stream: self.stream,
             actions: self.policy.actions,
+            scan_limits,
             response,
             upstreams,
             principals,
@@ -342,6 +362,20 @@ fn validate_stream(stream: &StreamConfig, problems: &mut Vec<String>) {
     }
     if stream.buffer_flush_bytes == 0 {
         problems.push("[stream] buffer_flush_bytes must be greater than 0".into());
+    }
+}
+
+/// Limit flags accept `flag` or `block` only (ADR 0012): a limit is always recorded, and
+/// redacting a whole encoded fragment is not supported.
+fn validate_scan_limits(
+    prefix: &str,
+    scan_limits: &BTreeMap<ScanLimit, Action>,
+    problems: &mut Vec<String>,
+) {
+    for (limit, action) in scan_limits {
+        if !matches!(action, Action::Flag | Action::Block) {
+            problems.push(format!("{prefix}{limit} must be \"flag\" or \"block\""));
+        }
     }
 }
 
@@ -581,6 +615,11 @@ fn validate_principals(
 
         validate_models(&location, &principal.models, declared_upstreams, problems);
         validate_actions(&location, &principal.actions, false, problems);
+        validate_scan_limits(
+            &format!("{location}: scan_limits."),
+            &principal.scan_limits,
+            problems,
+        );
 
         let limits = Limits {
             max_body_bytes: principal.max_body_bytes.unwrap_or(server_max_body_bytes),
@@ -614,6 +653,7 @@ fn validate_principals(
                     allowed: principal.models,
                     limits,
                     actions: principal.actions,
+                    scan_limits: principal.scan_limits,
                     stream_mode: principal.stream_mode,
                     expires_at,
                 },
@@ -751,6 +791,64 @@ credential_env = "OPENAI_API_KEY"
         assert_eq!(support.limits, Limits::default());
         assert_eq!(support.stream_mode, StreamMode::PassthroughAbort);
         assert!(config.warnings.is_empty(), "{:?}", config.warnings);
+    }
+
+    #[test]
+    fn scan_limits_default_to_block_depth_and_flag_size() {
+        let p = principal("bot", KEY_A, "");
+        let config = parse(&[BASE, OPENAI_UPSTREAM, &p]).unwrap();
+        assert_eq!(
+            config.scan_limits,
+            BTreeMap::from([
+                (ScanLimit::DecodeDepth, Action::Block),
+                (ScanLimit::DerivedBytes, Action::Flag),
+            ])
+        );
+        assert!(config.principals[0].principal.scan_limits.is_empty());
+    }
+
+    #[test]
+    fn scan_limits_can_be_set_globally_and_per_principal() {
+        let global = "\n[policy.scan_limits]\ndecode_depth = \"flag\"\n";
+        let p = principal("bot", KEY_A, "scan_limits.derived_bytes = \"block\"");
+        let config = parse(&[BASE, global, OPENAI_UPSTREAM, &p]).unwrap();
+        assert_eq!(
+            config.scan_limits,
+            BTreeMap::from([
+                (ScanLimit::DecodeDepth, Action::Flag),
+                (ScanLimit::DerivedBytes, Action::Flag),
+            ])
+        );
+        assert_eq!(
+            config.principals[0].principal.scan_limits,
+            BTreeMap::from([(ScanLimit::DerivedBytes, Action::Block)])
+        );
+    }
+
+    #[test]
+    fn scan_limits_accept_only_flag_and_block() {
+        for value in ["allow", "redact"] {
+            let global = format!("\n[policy.scan_limits]\ndecode_depth = \"{value}\"\n");
+            assert_rejected(
+                &[BASE, &global, OPENAI_UPSTREAM],
+                "[policy.scan_limits] decode_depth must be \"flag\" or \"block\"",
+            );
+            let p = principal(
+                "bot",
+                KEY_A,
+                &format!("scan_limits.derived_bytes = \"{value}\""),
+            );
+            assert_rejected(
+                &[BASE, OPENAI_UPSTREAM, &p],
+                "scan_limits.derived_bytes must be \"flag\" or \"block\"",
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_scan_limits_are_rejected() {
+        let global = "\n[policy.scan_limits]\ndepth = \"block\"\n";
+        assert_rejected(&[BASE, global, OPENAI_UPSTREAM], "depth");
     }
 
     #[test]

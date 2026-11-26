@@ -35,6 +35,12 @@ phone = "redact"
 email = "redact"
 invisible_text = "redact"
 
+# What to do when part of a text could not be fully inspected (ADR 0012): "flag" or "block".
+# Optional; these are the defaults. A principal can override them with scan_limits.<limit>.
+[policy.scan_limits]
+decode_depth = "block"             # more encoding layers than [scan] max_decode_depth
+derived_bytes = "flag"             # a decoded block over [scan] max_derived_bytes; its first part is scanned
+
 [response]
 strip_remote_images = true
 strip_links_outside = true
