@@ -167,3 +167,7 @@ Resguardo answers in the error shape of the API that was called, so each SDK rai
 | `UPSTREAM_REDIRECT` / `UPSTREAM_ERROR` | 502 | The provider redirected, failed or could not be reached |
 
 Errors from the provider itself are passed through unchanged. Every response carries `x-resguardo-request-id` and `x-resguardo-decision`.
+
+### Exit codes of the command line
+
+Every command exits with 0 when it did its job and the answer is yes, 1 when it did its job and the answer is no (for example, `config check` found an invalid configuration), and 2 when it could not do its job (an unreadable file, invalid arguments). See [ADR 0009](adr/0009-cli-exit-codes.md).

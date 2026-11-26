@@ -53,7 +53,8 @@ fn config_check_lists_every_problem_and_fails() {
 fn config_check_reports_a_missing_file() {
     let output = resguardo(&["config", "check", "--config", "/nonexistent/resguardo.toml"]);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_eq!(output.status.code(), Some(1));
+    // 2, not 1: the configuration could not be checked at all (ADR 0009).
+    assert_eq!(output.status.code(), Some(2));
     assert!(
         stderr.contains("reading /nonexistent/resguardo.toml"),
         "{stderr}"
@@ -61,6 +62,22 @@ fn config_check_reports_a_missing_file() {
 }
 
 /// Parses `key_sha256 = "<hash>"` out of the instructions printed on stderr.
+#[test]
+fn config_check_reports_a_syntax_error_as_a_problem() {
+    let path = repo_file("crates/resguardo/tests/fixtures/syntax-error.toml");
+    let output = resguardo(&["config", "check", "--config", &path]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // The file was read and checked: a syntax error is an answer, not a failure (ADR 0009).
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr.contains("line 3"), "{stderr}");
+}
+
+#[test]
+fn invalid_arguments_exit_with_2() {
+    let output = resguardo(&["config", "check", "--no-such-flag"]);
+    assert_eq!(output.status.code(), Some(2));
+}
+
 fn printed_hash(stderr: &str) -> String {
     let line = stderr
         .lines()
@@ -138,7 +155,7 @@ fn key_create_never_repeats_a_key() {
 fn key_create_rejects_an_invalid_principal_id() {
     let output = resguardo(&["key", "create", "--principal", "Support Bot"]);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty(), "no key may be printed on error");
     assert!(stderr.contains("principal id"), "{stderr}");
 }

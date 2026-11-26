@@ -61,32 +61,56 @@ enum KeyCommand {
     },
 }
 
+/// What a command that completed reports through its exit code (ADR 0009).
+enum Outcome {
+    /// The command did its job and the answer is yes: exit code 0.
+    Success,
+    /// The command did its job and the answer is no: exit code 1.
+    ProblemsFound,
+}
+
+/// The command could not do its job (ADR 0009). `clap` uses the same code for invalid
+/// arguments.
+const EXIT_ERROR: u8 = 2;
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
-        Command::Run { config } => run(&config),
+        Command::Run { config } => run(&config).map(|()| Outcome::Success),
         Command::Config {
             command: ConfigCommand::Check { config },
         } => config_check(&config),
         Command::Key {
             command: KeyCommand::Create { principal },
-        } => key_create(&principal),
+        } => key_create(&principal).map(|()| Outcome::Success),
     };
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(Outcome::Success) => ExitCode::SUCCESS,
+        Ok(Outcome::ProblemsFound) => ExitCode::FAILURE,
         Err(error) => {
-            // `{:#}` prints the whole context chain on one line: "reading x: No such file".
-            eprintln!("error: {error:#}");
-            ExitCode::FAILURE
+            print_error(&error);
+            ExitCode::from(EXIT_ERROR)
         }
     }
 }
 
-/// Reads and validates the configuration. Warnings go to stderr; the summary to stdout.
+fn print_error(error: &anyhow::Error) {
+    // `{:#}` prints the whole context chain on one line: "reading x: No such file".
+    eprintln!("error: {error:#}");
+}
+
+/// Reads and validates the configuration. Warnings go to stderr.
 fn load_config(path: &Path) -> anyhow::Result<Config> {
-    let source =
-        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    let config = Config::from_toml_str(&source).with_context(|| path.display().to_string())?;
+    parse_config(path, &read_config(path)?)
+}
+
+fn read_config(path: &Path) -> anyhow::Result<String> {
+    std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))
+}
+
+/// Validates the configuration read from `path` and prints its warnings on stderr.
+fn parse_config(path: &Path, source: &str) -> anyhow::Result<Config> {
+    let config = Config::from_toml_str(source).with_context(|| path.display().to_string())?;
     for warning in &config.warnings {
         eprintln!("warning: {warning}");
     }
@@ -153,15 +177,24 @@ async fn shutdown_signal() {
     }
 }
 
-fn config_check(path: &Path) -> anyhow::Result<()> {
-    let config = load_config(path)?;
+/// A file that cannot be read is an error; a file that is read but invalid is a problem
+/// found, because checking it is this command's job (ADR 0009).
+fn config_check(path: &Path) -> anyhow::Result<Outcome> {
+    let source = read_config(path)?;
+    let config = match parse_config(path, &source) {
+        Ok(config) => config,
+        Err(problems) => {
+            print_error(&problems);
+            return Ok(Outcome::ProblemsFound);
+        }
+    };
     println!(
         "{}: OK ({} upstream(s), {} principal(s))",
         path.display(),
         config.upstreams.len(),
         config.principals.len()
     );
-    Ok(())
+    Ok(Outcome::Success)
 }
 
 /// Generates a key from the operating system's random generator. If randomness is not
