@@ -153,14 +153,9 @@ Both reproduce with one command: [`resguardo accuracy`](docs/ACCURACY.md) and [`
 | Cards | 0.7 % | 0 |
 | Phones | 2.9 %, all of them ISBNs | 0 |
 
-**Cost,** per request, measured on a 2017 MacBook Pro against a local mock:
+`resguardo accuracy --baseline fixtures/accuracy/baseline.json` fails if any detector gets worse than the numbers above.
 
-| | p50 |
-| --- | --- |
-| What Resguardo adds: parsing, scanning, policy, signing the receipt, the extra hop | **0.5 ms** |
-| The same, flushing the receipt to disk before the request leaves (`fsync`, on by default) | **10.7 ms** on this laptop |
-
-The difference is one disk flush per request: the price of "the receipt is on disk before anything leaves". It depends on your disk, not on Resguardo. Throughput under concurrency is not measured yet. `resguardo accuracy --baseline fixtures/accuracy/baseline.json` fails if any detector gets worse than the numbers above.
+**Cost:** latency figures are not published yet. So far it has only been measured on an old laptop, which says little about a server; figures from a Linux server will follow. To measure it on your own machine, run `resguardo-bench` ([how](docs/BENCHMARKS.md)).
 
 ## How it compares
 
