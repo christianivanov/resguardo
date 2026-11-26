@@ -7,6 +7,9 @@
 pub mod json;
 
 pub use json::{ProtoError, parse_strict};
+pub mod redact;
 pub mod request;
+
+pub use redact::{RedactError, redact};
 
 pub use request::{ApiFormat, ParsedRequest, check_query, parse_request, route};

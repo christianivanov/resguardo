@@ -233,7 +233,11 @@ fn has_binary_data(object: &Map<String, Value>, key: Option<&str>) -> bool {
 }
 
 /// Appends `/segment` to the pointer (RFC 6901 escaping), runs `f`, then removes it.
-fn with_segment(pointer: &mut String, segment: &str, f: impl FnOnce(&mut String)) {
+pub(crate) fn with_segment<T>(
+    pointer: &mut String,
+    segment: &str,
+    f: impl FnOnce(&mut String) -> T,
+) -> T {
     let len = pointer.len();
     pointer.push('/');
     for c in segment.chars() {
@@ -243,8 +247,9 @@ fn with_segment(pointer: &mut String, segment: &str, f: impl FnOnce(&mut String)
             c => pointer.push(c),
         }
     }
-    f(pointer);
+    let result = f(pointer);
     pointer.truncate(len);
+    result
 }
 
 #[cfg(test)]
