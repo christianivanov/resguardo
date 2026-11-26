@@ -1,0 +1,110 @@
+# Exfiltration lab (milestone M6.3): the same attack with and without Resguardo.
+#
+#   docker compose -f lab/docker-compose.yml run --rm app              # protected
+#   docker compose -f lab/docker-compose.yml run --rm app-unprotected  # the same, without it
+#   docker compose -f lab/docker-compose.yml logs attacker             # what the attacker got
+#   docker compose -f lab/docker-compose.yml down -v
+#
+# Everything is local: the "provider" is the mock behind nginx, the "attacker" a logging
+# HTTP server, every secret is fake. Image tags checked on Docker Hub on 2026-11-26.
+
+name: resguardo-lab
+
+networks:
+  # No route out: the application can only talk to Resguardo.
+  internal:
+    internal: true
+  # Where Resguardo, the provider and the attacker are. In real life, the internet.
+  outside: {}
+
+volumes:
+  certs: {}
+  # Resguardo's configuration, audit log and signing keys.
+  data: {}
+  # The application's virtual key only.
+  labkey: {}
+
+services:
+  certs:
+    image: alpine/openssl:3.5.9
+    entrypoint: ["/bin/sh", "/lab/certs.sh"]
+    volumes:
+      - certs:/certs
+      - ./certs.sh:/lab/certs.sh:ro
+
+  mock:
+    build: { context: .., target: lab }
+    entrypoint: ["mock-upstream", "--listen", "0.0.0.0:9000"]
+    networks: [outside]
+
+  provider:
+    image: nginx:1.30-alpine
+    depends_on:
+      certs: { condition: service_completed_successfully }
+      mock: { condition: service_started }
+    volumes:
+      - certs:/certs:ro
+      - ./provider.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [outside]
+
+  attacker:
+    image: python:3.13-alpine3.22
+    command: ["python", "-u", "/lab/attacker.py"]
+    volumes:
+      - ./attacker.py:/lab/attacker.py:ro
+    networks: [outside]
+
+  # First start: the application's virtual key, the configuration and the signing keys.
+  setup:
+    build: { context: .., target: lab }
+    entrypoint: ["/bin/sh", "/lab/setup.sh"]
+    volumes:
+      - data:/data
+      - labkey:/labkey
+      - ./setup.sh:/lab/setup.sh:ro
+      - ./resguardo.toml.in:/lab/resguardo.toml.in:ro
+    network_mode: none
+
+  resguardo:
+    build: { context: .., target: lab }
+    depends_on:
+      setup: { condition: service_completed_successfully }
+      provider: { condition: service_started }
+    command: ["run", "--config", "/data/resguardo.toml"]
+    environment:
+      OPENAI_API_KEY: sk-lab-fake-provider-key
+      # Trust the lab's CA for the provider's certificate (rustls-native-certs).
+      SSL_CERT_FILE: /certs/ca.pem
+    volumes:
+      - certs:/certs:ro
+      - data:/data
+    networks: [internal, outside]
+
+  # The application, on the internal network only.
+  app:
+    image: curlimages/curl:8.23.0
+    depends_on:
+      resguardo: { condition: service_started }
+      attacker: { condition: service_started }
+    entrypoint: ["/bin/sh", "/lab/attack.sh"]
+    environment:
+      TARGET: http://resguardo:8787
+    volumes:
+      - ./attack.sh:/lab/attack.sh:ro
+      - labkey:/labkey:ro
+    networks: [internal]
+
+  # The same application with direct internet access and no Resguardo: what happens today.
+  app-unprotected:
+    image: curlimages/curl:8.23.0
+    profiles: [unprotected]
+    depends_on:
+      provider: { condition: service_started }
+      attacker: { condition: service_started }
+    entrypoint: ["/bin/sh", "/lab/attack.sh"]
+    environment:
+      TARGET: https://provider
+    volumes:
+      - ./attack.sh:/lab/attack.sh:ro
+      - labkey:/labkey:ro
+    networks: [outside]

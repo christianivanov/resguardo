@@ -3,7 +3,6 @@
 Ideas that are out of scope for v0.1. Add them here instead of implementing them.
 
 - Several upstreams of the same provider, each with its own name (ADR 0005).
-- Lab: `allow_insecure_upstream` only accepts local hosts, but the Docker lab reaches the mock upstream by service name. Decide in M6 (for example, allow names listed explicitly as lab hosts).
 - Coding agents: a secret read by the agent (for example from `.env`) sits in every later request of the session. With `block`, the session becomes unusable; with `redact`, the conversation is rewritten. Options: redact only inside `tool_result` blocks with deterministic placeholders, or a per-session "acknowledged" state. See `docs/research/claude-code-gateway.md`.
 - Use `x-claude-code-session-id` and agent ids as audit metadata.
 - Optional routes for Claude Code: `/v1/messages/count_tokens` and `/v1/models`.

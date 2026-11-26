@@ -1,0 +1,35 @@
+# Resguardo in the exfiltration lab. lab/setup.sh fills in @KEY_SHA256@ with the hash of a
+# virtual key it creates on first start: no key is stored in the repository.
+[server]
+listen = "0.0.0.0:8787"                  # reachable on the lab's internal network only
+
+[audit]
+path = "/data/audit.jsonl"
+signing_key = "/data/signing.key"
+public_key = "/data/signing.pub"
+
+[policy.actions]
+secret = "block"
+secret_candidate = "flag"
+es_id = "redact"
+iban = "redact"
+card = "block"
+phone = "redact"
+email = "redact"
+invisible_text = "redact"
+
+[response]
+strip_remote_images = true
+strip_links_outside = true
+
+# The "provider": nginx with the lab's own certificate in front of the mock. Resguardo trusts
+# that certificate through SSL_CERT_FILE, so the lab uses HTTPS like a real provider.
+[[upstream]]
+provider = "openai"
+base_url = "https://provider"
+credential_env = "OPENAI_API_KEY"
+
+[[principal]]
+id = "lab-app"
+key_sha256 = "@KEY_SHA256@"
+models.openai = ["gpt-4.1-mini"]

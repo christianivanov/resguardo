@@ -94,19 +94,25 @@ This is the biggest difference from the target architecture, where a compromised
 
 ## 7. Explicitly not protected in v0.1
 
-- Personal data without a structured format: names, addresses, health information in free text.
-- Prompt injection itself. Resguardo limits what an injection can send out; it does not detect it.
-- Actions the application takes on its own: tool execution, MCP traffic, other HTTP calls (assumption 1).
-- Embeddings, images, audio, the Responses API and other providers: those routes return 404 and are not proxied.
-- Traffic between the application and Resguardo is plain HTTP. On the same host this does not matter; across a network, virtual keys and prompts travel in clear unless the network is trusted or a TLS terminator sits in front.
-- Slow clients that send headers very slowly: there is no header read timeout yet.
-- Images, audio and PDFs **inside** a chat request (base64 or `data:` URLs) are forwarded without scanning; their count is recorded. Text hidden in them is not detected (ADR 0007).
-- Numbers in the JSON body are not scanned: a card number sent as a JSON number is not detected.
-- Response controls cover inline Markdown images and links only: reference-style images (`![x][ref]`), HTML `<img>` and bare URLs are not removed, and a link held for more than 512 bytes without closing is released unchanged (ADR 0014).
-- With `stream_mode = "passthrough_abort"`, the part of a secret sent before the event that completes it reaches the application (it does not leave the network); `buffer` mode avoids it.
-- Detector gaps listed in ADR 0008, 0010 and 0011, for example: values glued to other letters or digits (`DNI12345678Z`); encoded fragments under 12 Base64 characters or 18 hex digits (less than 9 bytes); Base64 split across lines; partial URL-encoding; addresses written as `name [at] example [dot] com`.
-- Restoring redacted values in responses.
-- Anything once the host is compromised.
+Each limit, and whether and how it is covered later. "Deployment" means the operator closes it around Resguardo ([`DEPLOYMENT.md`](DEPLOYMENT.md)); "v0.2" and `LATER.md` are planned work; "no" means a tool like this cannot.
+
+| Not protected | Why | Covered by |
+| --- | --- | --- |
+| Personal data without a structured format: names, addresses, health information in free text | Needs model-based detectors; v0.1 keeps deterministic ones with measured error rates (ADR 0004) | v0.2 (Presidio-style detectors) |
+| Prompt injection itself | Detection is unreliable; Resguardo limits what an injection can send out instead | v0.2 at the earliest; closed egress and response controls today |
+| Actions the application takes on its own: tool execution, MCP traffic, other HTTP calls | Outside the traffic Resguardo sees (assumption 1) | Deployment (no direct route out); MCP in v0.2 |
+| Embeddings, images, audio, the Responses API and other providers | Those routes return 404 and are not proxied | v0.2 |
+| Traffic between the application and Resguardo is plain HTTP | On the same host it does not matter; across a network, virtual keys and prompts travel in clear | Deployment (same host, a trusted network or a TLS terminator in front); inbound TLS in `LATER.md` |
+| Slow clients that send headers very slowly | No header read timeout yet | `LATER.md` |
+| Images, audio and PDFs inside a chat request | Forwarded without scanning, their count recorded (ADR 0007) | `LATER.md`: block binary parts per principal |
+| Numbers in the JSON body | A card number sent as a JSON number is not detected | `LATER.md` |
+| Response controls cover inline Markdown only | Reference-style images, HTML `<img>` and bare URLs are not removed; a link held for more than 512 bytes is released (ADR 0014) | `LATER.md` |
+| The first part of a secret split across stream events, with `passthrough_abort` | It reaches the application, not the outside, before the stream is cut | Configuration: `stream_mode = "buffer"` |
+| Detector gaps of ADR 0008, 0010 and 0011 | Values glued to other characters, encodings under 9 bytes, Base64 split across lines, partial URL-encoding, obfuscated email addresses | Measured in [`ACCURACY.md`](ACCURACY.md); tuning in `LATER.md` |
+| The end of the audit log | Deleting the last entries leaves a valid, shorter log; outcomes lost in a crash after sending | v0.2 (timestamping, external anchoring); deployment (copy the log off the host) |
+| Requests refused before authentication | They leave no receipt (ADR 0015) | Deployment (access logs in front, if needed) |
+| Restoring redacted values in responses | Not in scope for v0.1 | v0.2 |
+| Anything once the host is compromised | Whoever controls the host controls the keys and the process | No |
 
 ## 8. Questions for the external reviewer
 
