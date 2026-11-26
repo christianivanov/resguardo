@@ -22,6 +22,7 @@ struct Keys {
     old: String,
     slow: String,
     small: String,
+    careful: String,
 }
 
 struct Harness {
@@ -62,6 +63,7 @@ async fn harness() -> Harness {
     let (old, old_hash) = key(2);
     let (slow, slow_hash) = key(3);
     let (small, small_hash) = key(4);
+    let (careful, careful_hash) = key(5);
     let source = format!(
         r#"
 [audit]
@@ -78,6 +80,9 @@ card = "block"
 phone = "redact"
 email = "redact"
 invisible_text = "redact"
+
+[response]
+allowed_link_hosts = ["docs.example.com"]
 
 [[upstream]]
 provider = "openai"
@@ -99,7 +104,7 @@ allow_insecure_upstream = true
 [[principal]]
 id = "bot"
 key_sha256 = "{bot_hash}"
-models.openai = ["gpt-4.1-mini", "mock-redirect"]
+models.openai = ["gpt-4.1-mini", "mock-redirect", "mock-truncate"]
 models.anthropic = ["claude-sonnet-5-5", "mock-error"]
 models.openai_compatible = ["llama-3"]
 
@@ -121,6 +126,13 @@ key_sha256 = "{small_hash}"
 models.openai = ["gpt-4.1-mini"]
 max_body_bytes = 200
 max_messages = 1
+
+[[principal]]
+id = "careful"
+key_sha256 = "{careful_hash}"
+models.openai = ["gpt-4.1-mini"]
+models.anthropic = ["claude-sonnet-5-5"]
+stream_mode = "buffer"
 "#,
         openai = credential_file(OPENAI_KEY),
         anthropic = credential_file(ANTHROPIC_KEY),
@@ -138,6 +150,7 @@ max_messages = 1
             old,
             slow,
             small,
+            careful,
         },
         client: reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
@@ -433,8 +446,8 @@ async fn malformed_requests_are_400_and_never_echo_content() {
     let duplicate = format!(
         r#"{{"model":"gpt-4.1-mini","messages":[{{"role":"user","content":"{secret}","content":"x"}}]}}"#
     );
-    let streaming = CHAT.replace(r#""messages""#, r#""stream":true,"messages""#);
-    for body in [duplicate.as_str(), "not json", streaming.as_str()] {
+    // `"stream": true` was refused here until M4; it is now served (ADR 0014).
+    for body in [duplicate.as_str(), "not json"] {
         let reply = h.openai(&h.keys.bot, body).await;
         assert_eq!(reply.status, 400, "{body}");
         assert_eq!(reply.code(), "INVALID_REQUEST");
@@ -648,4 +661,201 @@ async fn texts_outside_the_messages_are_redacted_too() {
         body.replace("ana@example.es", "[REDACTED:email:1]")
             .as_bytes()
     );
+}
+
+// --- Streaming and response controls (M4) ------------------------------------------------
+
+/// The AWS documentation example key reversed: the request carries this, which is not a
+/// key, and the mock answers with the key itself (`MOCK_REPLY_REVERSED:`).
+const AWS_KEY_REVERSED: &str = concat!("ELPMAXE7NND", "OFSOIAIKA");
+
+fn stream_chat(content: &str) -> String {
+    serde_json::json!({
+        "model": "gpt-4.1-mini",
+        "stream": true,
+        "messages": [{"role": "user", "content": content}],
+    })
+    .to_string()
+}
+
+fn stream_messages(content: &str) -> String {
+    serde_json::json!({
+        "model": "claude-sonnet-5-5",
+        "max_tokens": 10,
+        "stream": true,
+        "messages": [{"role": "user", "content": content}],
+    })
+    .to_string()
+}
+
+/// Every SSE event of a body, as (event name, data).
+fn sse_events(body: &[u8]) -> Vec<(Option<String>, String)> {
+    let mut parser = resguardo_proto::SseParser::new(1 << 24);
+    let mut events = parser.push(body).unwrap();
+    events.extend(parser.finish());
+    events
+        .into_iter()
+        .filter_map(|e| e.data.map(|d| (e.event, d)))
+        .collect()
+}
+
+/// The text the application would show: the content deltas, in order.
+fn streamed_text(body: &[u8]) -> String {
+    sse_events(body)
+        .into_iter()
+        .filter_map(|(_, data)| serde_json::from_str::<Value>(&data).ok())
+        .filter_map(|json| {
+            json["choices"][0]["delta"]["content"]
+                .as_str()
+                .or(json["delta"]["text"].as_str())
+                .map(str::to_owned)
+        })
+        .collect()
+}
+
+fn error_event(body: &[u8]) -> Option<Value> {
+    sse_events(body)
+        .into_iter()
+        .find(|(name, _)| name.as_deref() == Some("error"))
+        .map(|(_, data)| serde_json::from_str(&data).unwrap())
+}
+
+#[tokio::test]
+async fn a_stream_is_forwarded_as_events() {
+    let h = harness().await;
+    let reply = h.openai(&h.keys.bot, &stream_chat("hola mundo")).await;
+    assert_eq!(reply.status, 200);
+    assert_eq!(reply.header("content-type"), "text/event-stream");
+    assert_eq!(reply.header("x-resguardo-decision"), "allow");
+    assert_eq!(streamed_text(&reply.body), "echo: hola mundo");
+    assert!(reply.body.ends_with(b"data: [DONE]\n\n"));
+
+    let reply = h
+        .anthropic(&h.keys.bot, &stream_messages("hola mundo"))
+        .await;
+    assert_eq!(reply.status, 200);
+    assert_eq!(streamed_text(&reply.body), "echo: hola mundo");
+    let names: Vec<_> = sse_events(&reply.body)
+        .into_iter()
+        .filter_map(|e| e.0)
+        .collect();
+    assert!(names.contains(&"ping".to_owned()), "{names:?}");
+    assert_eq!(names.last().map(String::as_str), Some("message_stop"));
+}
+
+#[tokio::test]
+async fn g4_a_key_split_across_events_cuts_the_stream_with_an_error_event() {
+    let h = harness().await;
+    // The mock sends the key in 8-character pieces: AKIAIOSF, ODNN7EXA, MPLE.
+    let content = format!("MOCK_REPLY_REVERSED: {AWS_KEY_REVERSED}");
+
+    let reply = h.openai(&h.keys.bot, &stream_chat(&content)).await;
+    assert_eq!(reply.status, 200, "the stream had started");
+    let error = error_event(&reply.body).expect("an error event");
+    assert_eq!(error["error"]["code"], "SENSITIVE_DATA");
+    assert!(!String::from_utf8_lossy(&reply.body).contains("[DONE]"));
+    assert!(!streamed_text(&reply.body).contains(AWS_EXAMPLE_KEY));
+
+    let reply = h.anthropic(&h.keys.bot, &stream_messages(&content)).await;
+    let error = error_event(&reply.body).expect("an error event");
+    assert_eq!(error["type"], "error");
+    assert_eq!(error["error"]["type"], "permission_error");
+    assert_eq!(error["error"]["code"], "SENSITIVE_DATA");
+    assert!(!String::from_utf8_lossy(&reply.body).contains("message_stop"));
+}
+
+#[tokio::test]
+async fn in_buffer_mode_nothing_of_the_split_key_is_released() {
+    let h = harness().await;
+    let content = format!("MOCK_REPLY_REVERSED: {AWS_KEY_REVERSED}");
+    let reply = h.openai(&h.keys.careful, &stream_chat(&content)).await;
+    assert!(error_event(&reply.body).is_some());
+    assert_eq!(streamed_text(&reply.body), "", "the first piece was held");
+    assert!(!String::from_utf8_lossy(&reply.body).contains("AKIA"));
+}
+
+#[tokio::test]
+async fn in_buffer_mode_text_arrives_complete() {
+    let h = harness().await;
+    let reply = h
+        .openai(&h.keys.careful, &stream_chat("una frase. y otra sin punto"))
+        .await;
+    assert_eq!(
+        streamed_text(&reply.body),
+        "echo: una frase. y otra sin punto"
+    );
+    assert!(reply.body.ends_with(b"data: [DONE]\n\n"));
+}
+
+#[tokio::test]
+async fn g4_a_remote_image_split_across_events_is_removed() {
+    let h = harness().await;
+    let content = "MOCK_REPLY: Mira ![x](https://attacker.test/p?d=abc) fin";
+    let reply = h.openai(&h.keys.bot, &stream_chat(content)).await;
+    assert_eq!(streamed_text(&reply.body), "Mira [image removed] fin");
+    let reply = h.anthropic(&h.keys.bot, &stream_messages(content)).await;
+    assert_eq!(streamed_text(&reply.body), "Mira [image removed] fin");
+    assert!(!String::from_utf8_lossy(&reply.body).contains("attacker.test"));
+}
+
+#[tokio::test]
+async fn g4_a_link_to_an_allowed_host_is_kept_and_others_lose_their_url() {
+    let h = harness().await;
+    let content =
+        "MOCK_REPLY: [guía](https://docs.example.com/x) y [otra](https://attacker.test/y)";
+    let reply = h.openai(&h.keys.bot, &stream_chat(content)).await;
+    assert_eq!(
+        streamed_text(&reply.body),
+        "[guía](https://docs.example.com/x) y otra"
+    );
+}
+
+#[tokio::test]
+async fn g4_ten_thousand_events_without_findings_are_all_forwarded() {
+    let h = harness().await;
+    // 80,000 characters in 8-character pieces.
+    let text = "abcdefgh".repeat(10_000);
+    let reply = h
+        .openai(&h.keys.bot, &stream_chat(&format!("MOCK_REPLY: {text}")))
+        .await;
+    assert_eq!(reply.status, 200);
+    assert_eq!(streamed_text(&reply.body), text);
+    assert!(reply.body.ends_with(b"data: [DONE]\n\n"));
+}
+
+#[tokio::test]
+async fn a_stream_cut_by_the_provider_releases_what_was_held() {
+    let h = harness().await;
+    // `mock-truncate` stops after the first piece, "ver [abc", without the closing events;
+    // "[abc" was held as a possible link and is released at the end.
+    let body = stream_chat("MOCK_REPLY: ver [abcdef] fin").replace("gpt-4.1-mini", "mock-truncate");
+    let reply = h.openai(&h.keys.bot, &body).await;
+    assert_eq!(reply.status, 200);
+    assert_eq!(streamed_text(&reply.body), "ver [abc");
+}
+
+#[tokio::test]
+async fn a_whole_response_gets_the_same_controls() {
+    let h = harness().await;
+    let reply = h
+        .openai(
+            &h.keys.bot,
+            &chat_with("MOCK_REPLY: ![x](https://attacker.test/p) [a](https://attacker.test/)"),
+        )
+        .await;
+    assert_eq!(reply.status, 200);
+    assert_eq!(
+        reply.json()["choices"][0]["message"]["content"],
+        "[image removed] a"
+    );
+}
+
+#[tokio::test]
+async fn a_whole_response_with_a_key_is_403() {
+    let h = harness().await;
+    let content = format!("MOCK_REPLY_REVERSED: {AWS_KEY_REVERSED}");
+    let reply = h.openai(&h.keys.bot, &chat_with(&content)).await;
+    assert_eq!(reply.status, 403);
+    assert_eq!(reply.code(), "SENSITIVE_DATA");
+    assert!(!String::from_utf8_lossy(&reply.body).contains("AKIA"));
 }

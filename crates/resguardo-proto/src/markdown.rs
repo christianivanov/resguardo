@@ -74,6 +74,23 @@ impl ResponseControls {
         )
     }
 
+    /// Adds `text` to what `held` keeps from earlier chunks, returns what can be released
+    /// now and leaves in `held` what must wait. For callers that keep one `held` per stream
+    /// block; [`MarkdownFilter`] wraps it for a single text.
+    pub fn push(&self, held: &mut String, text: &str) -> String {
+        let mut buf = std::mem::take(held);
+        buf.push_str(text);
+        let (out, pending) = self.process(&buf, false);
+        *held = pending;
+        out
+    }
+
+    /// The text ended: resolves and returns whatever `held` kept.
+    pub fn finish(&self, held: &mut String) -> String {
+        let buf = std::mem::take(held);
+        self.process(&buf, true).0
+    }
+
     /// Applies the controls to a complete text.
     pub fn apply(&self, text: &str) -> String {
         let mut filter = MarkdownFilter::new(self);
@@ -251,17 +268,12 @@ impl<'a> MarkdownFilter<'a> {
 
     /// Adds text and returns what can be released now.
     pub fn push(&mut self, text: &str) -> String {
-        let mut buf = std::mem::take(&mut self.pending);
-        buf.push_str(text);
-        let (out, pending) = self.controls.process(&buf, false);
-        self.pending = pending;
-        out
+        self.controls.push(&mut self.pending, text)
     }
 
     /// The text ended: resolves and returns whatever was held.
     pub fn finish(&mut self) -> String {
-        let buf = std::mem::take(&mut self.pending);
-        self.controls.process(&buf, true).0
+        self.controls.finish(&mut self.pending)
     }
 
     /// Bytes held, never more than [`HOLD_LIMIT`] plus one character.

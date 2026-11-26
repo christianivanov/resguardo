@@ -7,6 +7,7 @@
 //! - By default the reply is `echo: <last user text>`.
 //! - If the last user text contains `MOCK_REPLY:`, the reply is everything after it. Tests use
 //!   this to make the "model" say something specific (for example a Markdown image).
+//!   With `MOCK_REPLY_REVERSED:`, the reply is that text reversed.
 //! - Model `mock-redirect` answers `302`; `mock-error` answers `500` with a provider error body;
 //!   `mock-truncate` cuts a stream after the first text chunk, without the closing events;
 //!   `mock-stall` sends the first events of a stream and then nothing, without closing it;
@@ -37,6 +38,10 @@ pub const CHUNK_CHARS: usize = 8;
 
 /// Marker in the last user message that sets the reply text.
 pub const REPLY_MARKER: &str = "MOCK_REPLY:";
+/// Like [`REPLY_MARKER`], but the reply is the text after it reversed. Tests use it to make
+/// the "model" answer with a fake secret that the request does not contain, so request
+/// scanning lets it through and response scanning is what is tested.
+pub const REVERSED_REPLY_MARKER: &str = "MOCK_REPLY_REVERSED:";
 
 /// A request as the mock received it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -313,6 +318,13 @@ fn last_user_text(request: &Value) -> String {
 }
 
 fn reply_text(user_text: &str) -> String {
+    if let Some(at) = user_text.find(REVERSED_REPLY_MARKER) {
+        return user_text[at + REVERSED_REPLY_MARKER.len()..]
+            .trim_start()
+            .chars()
+            .rev()
+            .collect();
+    }
     match user_text.find(REPLY_MARKER) {
         Some(at) => user_text[at + REPLY_MARKER.len()..].trim_start().to_owned(),
         None => format!("echo: {user_text}"),
@@ -492,6 +504,7 @@ mod tests {
     #[test]
     fn reply_marker_sets_the_reply() {
         assert_eq!(reply_text("hola"), "echo: hola");
+        assert_eq!(reply_text("x MOCK_REPLY_REVERSED: cba"), "abc");
         assert_eq!(
             reply_text("ignore this MOCK_REPLY: ![x](https://attacker.test/p)"),
             "![x](https://attacker.test/p)"

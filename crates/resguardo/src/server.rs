@@ -26,13 +26,17 @@ use axum::http::header::{
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::StreamExt;
+use resguardo_core::config::StreamConfig;
 use resguardo_core::{
     BlockCode, Config, DataClass, Decision, KeyRing, OffsetDateTime, Principal, Provider,
 };
-use resguardo_egress::{Egress, OutboundRequest};
+use resguardo_egress::{Egress, OutboundRequest, UpstreamAnswer, UpstreamResponse, UpstreamStream};
 use resguardo_policy::Policy;
-use resguardo_proto::{ApiFormat, ParsedRequest, check_query, parse_request, redact, route};
+use resguardo_proto::{
+    ApiFormat, ParsedRequest, ResponseControls, check_query, parse_request, redact, route,
+};
 use resguardo_scan::Pipeline;
+use serde_json::Value;
 use serde_json::json;
 use tokio::net::TcpListener;
 
@@ -48,8 +52,10 @@ const X_DECISION: HeaderName = HeaderName::from_static("x-resguardo-decision");
 pub struct App {
     keys: KeyRing,
     limiter: RateLimiter,
-    pipeline: Pipeline,
-    policy: Policy,
+    pub(crate) pipeline: Pipeline,
+    pub(crate) policy: Policy,
+    pub(crate) controls: ResponseControls,
+    pub(crate) stream: StreamConfig,
     egress: Egress,
     request_timeout: Duration,
 }
@@ -74,6 +80,8 @@ impl App {
             limiter: RateLimiter::new(config.principals.iter().map(|p| &p.principal)),
             pipeline,
             policy: Policy::from_config(config),
+            controls: ResponseControls::from_config(&config.response),
+            stream: config.stream.clone(),
             egress,
             request_timeout: Duration::from_secs(config.server.request_timeout_secs),
         })
@@ -110,7 +118,7 @@ async fn healthz() -> Response {
 
 /// Why Resguardo answered itself instead of forwarding.
 #[derive(Debug)]
-enum Failure {
+pub(crate) enum Failure {
     NotFound,
     Block {
         code: BlockCode,
@@ -121,7 +129,7 @@ enum Failure {
 }
 
 impl Failure {
-    fn block(code: BlockCode, message: impl Into<String>) -> Self {
+    pub(crate) fn block(code: BlockCode, message: impl Into<String>) -> Self {
         Failure::Block {
             code,
             message: message.into(),
@@ -137,8 +145,8 @@ impl Failure {
 async fn proxy(State(app): State<Arc<App>>, request: Request) -> Response {
     let request_id = new_request_id();
     let format = route(request.method().as_str(), request.uri().path());
-    match handle(&app, format, request).await {
-        Ok((response, decision)) => forwarded(response, &request_id, decision),
+    match handle(&app, format, request, &request_id).await {
+        Ok(response) => response,
         Err(failure) => error_response(failure, format, &request_id),
     }
 }
@@ -147,7 +155,8 @@ async fn handle(
     app: &Arc<App>,
     format: Option<ApiFormat>,
     request: Request,
-) -> Result<(resguardo_egress::UpstreamResponse, &'static str), Failure> {
+    request_id: &str,
+) -> Result<Response, Failure> {
     let Some(format) = format else {
         return Err(Failure::NotFound);
     };
@@ -175,11 +184,7 @@ async fn handle(
         .map_err(|_| Failure::invalid("request body was not received in time"))??;
 
     let parsed = parse_request(format, &bytes).map_err(|e| Failure::invalid(e.to_string()))?;
-    if parsed.stream {
-        return Err(Failure::invalid(
-            "streaming is not supported yet (planned for v0.1, milestone M4)",
-        ));
-    }
+    let stream = parsed.stream;
     if parsed.message_count > principal.limits.max_messages {
         return Err(Failure::block(
             BlockCode::BodyTooLarge,
@@ -201,22 +206,109 @@ async fn handle(
     // M5 goes here: write the signed decision entry before anything leaves. Until then
     // `App::from_config` only allows local upstreams.
 
-    let response = app
-        .egress
-        .send(OutboundRequest {
-            provider,
-            path: format.path(),
-            query,
-            incoming_headers: headers,
-            body,
-        })
-        .await
-        .map_err(|error| {
-            // Operator-facing detail: provider and cause, never content or credentials.
-            eprintln!("upstream {provider}: {error}");
-            Failure::block(error.block_code(), upstream_message(error.block_code()))
-        })?;
-    Ok((response, decision))
+    let outbound = OutboundRequest {
+        provider,
+        path: format.path(),
+        query,
+        incoming_headers: headers,
+        body,
+    };
+    let upstream_failed = |error: resguardo_egress::EgressError| {
+        // Operator-facing detail: provider and cause, never content or credentials.
+        eprintln!("upstream {provider}: {error}");
+        Failure::block(error.block_code(), upstream_message(error.block_code()))
+    };
+    let answer = if stream {
+        app.egress
+            .send_streaming(outbound)
+            .await
+            .map_err(upstream_failed)?
+    } else {
+        UpstreamAnswer::Whole(app.egress.send(outbound).await.map_err(upstream_failed)?)
+    };
+    match answer {
+        UpstreamAnswer::Whole(response) => {
+            let response =
+                guard_whole(Arc::clone(app), principal.clone(), format, response).await?;
+            Ok(forwarded(response, request_id, decision))
+        }
+        UpstreamAnswer::Stream(upstream) => Ok(streamed(
+            Arc::clone(app),
+            principal.clone(),
+            format,
+            upstream,
+            request_id,
+            decision,
+        )),
+    }
+}
+
+/// Scans a whole response on the blocking pool (ADR 0014).
+async fn guard_whole(
+    app: Arc<App>,
+    principal: Principal,
+    format: ApiFormat,
+    response: UpstreamResponse,
+) -> Result<UpstreamResponse, Failure> {
+    tokio::task::spawn_blocking(move || {
+        crate::response::guard_whole(&app, &principal, format, response)
+    })
+    .await
+    .map_err(|_| Failure::block(BlockCode::ScanError, "the response could not be scanned"))?
+}
+
+/// Relays an SSE response through a [`crate::response::StreamGuard`]: each chunk is
+/// scanned and controlled before it is sent, and a blocking finding ends the stream with
+/// an error event. The status and headers go out first, so the decision header is the
+/// request's.
+fn streamed(
+    app: Arc<App>,
+    principal: Principal,
+    format: ApiFormat,
+    upstream: UpstreamStream,
+    request_id: &str,
+    decision: &'static str,
+) -> Response {
+    use crate::response::{Step, StreamGuard};
+
+    let status = upstream.status();
+    let upstream_headers = upstream.headers().clone();
+    let guard = StreamGuard::new(app, principal, format, request_id.to_owned());
+    // `unfold` turns a state and an async step function into a stream, like an iterator
+    // whose `next` may wait. `None` as state means the stream is over.
+    let body = futures_util::stream::unfold(Some((upstream, guard)), |state| async move {
+        let (mut upstream, mut guard) = state?;
+        loop {
+            let bytes = match upstream.next_chunk().await {
+                Ok(Some(chunk)) => match guard.chunk(&chunk) {
+                    Step::Continue(bytes) if bytes.is_empty() => continue,
+                    Step::Continue(bytes) => {
+                        return Some((
+                            Ok::<_, std::convert::Infallible>(bytes),
+                            Some((upstream, guard)),
+                        ));
+                    }
+                    Step::Stop(bytes) => bytes,
+                },
+                Ok(None) => guard.end(),
+                Err(error) => {
+                    eprintln!("upstream stream: {error}");
+                    guard.fail()
+                }
+            };
+            return if bytes.is_empty() {
+                None
+            } else {
+                Some((Ok(bytes), None))
+            };
+        }
+    });
+    let mut response = Body::from_stream(body).into_response();
+    *response.status_mut() = status;
+    let headers = response.headers_mut();
+    headers.extend(upstream_headers);
+    add_resguardo_headers(headers, request_id, decision);
+    response
 }
 
 /// Scans the texts, asks policy and redacts if needed. Returns the decision for the
@@ -368,11 +460,7 @@ fn upstream_message(code: BlockCode) -> &'static str {
     }
 }
 
-fn forwarded(
-    upstream: resguardo_egress::UpstreamResponse,
-    request_id: &str,
-    decision: &'static str,
-) -> Response {
+fn forwarded(upstream: UpstreamResponse, request_id: &str, decision: &'static str) -> Response {
     let mut response = Body::from(upstream.body).into_response();
     *response.status_mut() = upstream.status;
     let headers = response.headers_mut();
@@ -403,7 +491,31 @@ fn error_response(failure: Failure, format: Option<ApiFormat>, request_id: &str)
             retry_after,
         ),
     };
-    let body = match format {
+    let body = error_body(format, status, code, &message, request_id);
+    let mut response = (
+        status,
+        [(CONTENT_TYPE, HeaderValue::from_static("application/json"))],
+        body.to_string(),
+    )
+        .into_response();
+    let headers = response.headers_mut();
+    add_resguardo_headers(headers, request_id, "block");
+    if let Some(secs) = retry_after {
+        headers.insert(RETRY_AFTER, HeaderValue::from(secs));
+    }
+    response
+}
+
+/// Annex H error JSON in the shape of the API that was called. Also the data of the
+/// `event: error` that ends a stream.
+pub(crate) fn error_body(
+    format: Option<ApiFormat>,
+    status: StatusCode,
+    code: &str,
+    message: &str,
+    request_id: &str,
+) -> Value {
+    match format {
         Some(ApiFormat::AnthropicMessages) => json!({
             "type": "error",
             "error": {
@@ -425,19 +537,7 @@ fn error_response(failure: Failure, format: Option<ApiFormat>, request_id: &str)
                 "request_id": request_id,
             }
         }),
-    };
-    let mut response = (
-        status,
-        [(CONTENT_TYPE, HeaderValue::from_static("application/json"))],
-        body.to_string(),
-    )
-        .into_response();
-    let headers = response.headers_mut();
-    add_resguardo_headers(headers, request_id, "block");
-    if let Some(secs) = retry_after {
-        headers.insert(RETRY_AFTER, HeaderValue::from(secs));
     }
-    response
 }
 
 /// Anthropic's documented error types by status.
