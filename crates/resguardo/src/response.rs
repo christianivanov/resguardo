@@ -7,8 +7,8 @@ use std::sync::Arc;
 use resguardo_core::{BlockCode, DataClass, Decision, Principal, StreamMode};
 use resguardo_egress::UpstreamResponse;
 use resguardo_proto::{
-    ApiFormat, Block, SseParser, StreamEvent, TextKind, analyze_event, flush_event, parse_strict,
-    replace_strings, response_texts, rewrite_event,
+    ApiFormat, Block, MarkdownState, SseParser, StreamEvent, TextKind, analyze_event, flush_event,
+    parse_strict, replace_strings, response_texts, rewrite_event,
 };
 use serde_json::Value;
 
@@ -88,7 +88,7 @@ pub(crate) struct StreamGuard {
     /// The last `overlap_bytes` of each block's texts.
     tails: HashMap<Block, String>,
     /// Text held by the response controls, per block.
-    held_text: HashMap<Block, String>,
+    held_text: HashMap<Block, MarkdownState>,
     /// The last event of each text block, to build the event that releases held text.
     templates: HashMap<Block, StreamEvent>,
     /// `buffer` mode: scanned events not yet released, and their text length.

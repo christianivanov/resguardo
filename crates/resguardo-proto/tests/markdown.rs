@@ -169,7 +169,10 @@ fn many_open_brackets_take_linear_time() {
     let text = "[".repeat(200_000) + &"![".repeat(100_000);
     let start = Instant::now();
     let _ = apply(&text);
-    assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
+    // Each candidate costs at most HOLD_LIMIT bytes, about 1 s here in a debug build; a
+    // quadratic scan of these 300,000 brackets would take hours. The bound leaves room for a
+    // loaded machine running other tests in parallel.
+    assert!(start.elapsed().as_secs() < 20, "{:?}", start.elapsed());
 }
 
 #[test]
@@ -199,8 +202,47 @@ fn applying_the_controls_twice_changes_nothing() {
         "![x](https://a.test/)(https://attacker.test/)",
         "[[x]](https://attacker.test/)(https://attacker.test/)",
         "[a ![x](https://a.test/) b](https://docs.example.com/) ![y](//attacker.test/)",
+        // Found by the fuzzer: the first `!` is plain text, the second starts an image that
+        // never closes; the placeholder after a `!` must not look like an image.
+        "!![[[",
+        "!![x](https://a.test/) fin",
+        "!![[[[[[\u{8}\n[",
     ] {
         let once = apply(text);
         assert_eq!(apply(&once), once, "{text}");
     }
+}
+
+#[test]
+fn a_bang_released_earlier_still_escapes_the_placeholder() {
+    // Found by the fuzzer: split between the two `!`, the first was released before the
+    // image was decided.
+    assert_eq!(
+        apply_split_everywhere("!![[[[[[\u{8}\n["),
+        r"!\[image removed\]"
+    );
+}
+
+#[test]
+fn a_backslash_at_a_split_still_escapes_what_follows() {
+    // Found by the fuzzer: split after the backslash, `\!` lost its escape.
+    assert_eq!(apply_split_everywhere("v\\![["), "v\\![[");
+    assert_eq!(
+        apply_split_everywhere("a\\[x](https://attacker.test/) b\\\\[y](https://attacker.test/)"),
+        "a\\[x](https://attacker.test/) b\\\\y"
+    );
+}
+
+#[test]
+fn markdown_inside_a_kept_destination_gets_the_controls() {
+    // Found by the fuzzer: CommonMark does not accept "x ![b](...)" as a destination, so it
+    // renders the outer link as text and the inner image as an image.
+    assert_eq!(
+        apply_split_everywhere("[a](x ![b](https://attacker.test/?d=1))"),
+        "[a](x [image removed])"
+    );
+    assert_eq!(
+        apply("![a](x.png ![b](https://attacker.test/?d=1))"),
+        "![a](x.png [image removed])"
+    );
 }
