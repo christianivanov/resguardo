@@ -66,6 +66,7 @@ tools/mock-upstream/  fake OpenAI and Anthropic server
 tools/sdk-smoke/      official Python SDKs against Resguardo and the mock (uv)
 tools/accuracy/       generator of the accuracy corpus (Python, fixed seed)
 tools/bench/          scanning throughput and added latency
+tools/demo/           records lab/local-demo.sh as the README's animated SVG
 lab/                  docker compose exfiltration lab with an internal network
 fuzz/                 cargo-fuzz targets
 ```

@@ -32,7 +32,16 @@ Resguardo is a single Rust binary between your applications and the OpenAI and A
 
 ## See it stop an exfiltration
 
-The same attack twice, on one machine: first through Resguardo (port 18788), then straight to the provider (port 19100). This is the unedited output of [`lab/local-demo.sh`](lab/local-demo.sh):
+The same attack twice, on one machine: first through Resguardo (port 18788), then straight to the provider (port 19100).
+
+<p align="center">
+  <img src="docs/demo.svg" alt="lab/local-demo.sh: through Resguardo the key is blocked, the DNI redacted and the attacker's image removed; straight to the provider all three leak">
+</p>
+
+Recorded from a real run of [`lab/local-demo.sh`](lab/local-demo.sh) by [`tools/demo/record_svg.py`](tools/demo/record_svg.py); only the long pauses (the build, servers starting) are shortened. The same output as text, unedited:
+
+<details>
+<summary>Output</summary>
 
 ```console
 $ lab/local-demo.sh
@@ -52,6 +61,8 @@ LEAK the answer carries an image that sends data to the attacker
 audit.jsonl: OK (6 entries)
 == exit codes: protected 0, unprotected 1
 ```
+
+</details>
 
 The [Docker lab](lab/README.md) adds what one machine cannot show: the application sits on a network whose only way out is Resguardo. It has not been run for this release yet.
 
