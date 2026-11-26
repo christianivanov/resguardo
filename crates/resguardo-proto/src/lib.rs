@@ -9,7 +9,9 @@ pub mod json;
 pub use json::{ProtoError, parse_strict};
 pub mod redact;
 pub mod request;
+pub mod sse;
 
 pub use redact::{RedactError, redact};
+pub use sse::{SseError, SseEvent, SseParser};
 
 pub use request::{ApiFormat, ParsedRequest, check_query, parse_request, route};
