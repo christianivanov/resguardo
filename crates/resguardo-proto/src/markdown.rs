@@ -17,6 +17,8 @@ use url::Url;
 pub const HOLD_LIMIT: usize = 512;
 
 const IMAGE_REMOVED: &str = "[image removed]";
+/// The placeholder when `(` follows it, so the two cannot form a link.
+const IMAGE_REMOVED_ESCAPED: &str = r"\[image removed\]";
 
 /// What the configuration asks for, built once.
 #[derive(Debug, Clone)]
@@ -42,6 +44,10 @@ enum Parsed {
     Complete {
         end: usize,
         replacement: String,
+    },
+    /// A remote image to remove: its placeholder depends on the next character.
+    RemovedImage {
+        end: usize,
     },
     NotAConstruct,
     /// The text ended before the construct did, within the limit.
@@ -128,6 +134,13 @@ impl ResponseControls {
                     out.push_str(&replacement);
                     i = end;
                 }
+                Parsed::RemovedImage { end } => match placeholder(bytes, end, at_end) {
+                    Some(text) => {
+                        out.push_str(text);
+                        i = end;
+                    }
+                    None => return (out, slice(buf, start, bytes.len()).to_owned()),
+                },
                 Parsed::NotAConstruct => {
                     out.push_str(slice(buf, start, open + 1));
                     i = open + 1;
@@ -141,8 +154,14 @@ impl ResponseControls {
                     i = bytes.len();
                 }
                 Parsed::Overflow if removes_image => {
-                    out.push_str(IMAGE_REMOVED);
-                    i = limit_end(buf, start);
+                    let end = limit_end(buf, start);
+                    match placeholder(bytes, end, at_end) {
+                        Some(text) => {
+                            out.push_str(text);
+                            i = end;
+                        }
+                        None => return (out, slice(buf, start, bytes.len()).to_owned()),
+                    }
                 }
                 // Anything else is released as text, and scanning goes on after its `[`.
                 Parsed::Incomplete | Parsed::Overflow => {
@@ -226,10 +245,9 @@ impl ResponseControls {
                 Destination::Local | Destination::Data
             );
             if self.strip_remote_images && !local {
-                IMAGE_REMOVED.to_owned()
-            } else {
-                whole.to_owned()
+                return Parsed::RemovedImage { end: end + 1 };
             }
+            whole.to_owned()
         } else {
             // The link text may hold an image of its own.
             let inner = self.apply(text);
@@ -239,7 +257,7 @@ impl ResponseControls {
                 Destination::Web(None) | Destination::Data | Destination::Other => false,
             };
             if self.strip_links_outside && !allowed {
-                inner
+                escape_link_text(&inner)
             } else {
                 format!("[{inner}]({destination})")
             }
@@ -249,6 +267,33 @@ impl ResponseControls {
             replacement,
         }
     }
+}
+
+/// The placeholder for an image removed up to `end`: escaped if `(` follows, so the two
+/// cannot form a link. `None` if the next character has not arrived yet.
+fn placeholder(bytes: &[u8], end: usize, at_end: bool) -> Option<&'static str> {
+    match bytes.get(end) {
+        Some(b'(') => Some(IMAGE_REMOVED_ESCAPED),
+        Some(_) => Some(IMAGE_REMOVED),
+        None if at_end => Some(IMAGE_REMOVED),
+        None => None,
+    }
+}
+
+/// The text of a removed link, with Markdown that could start a new link or image made
+/// literal: backslashes and brackets escaped, and a final `!` too.
+fn escape_link_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 8);
+    for c in text.chars() {
+        if matches!(c, '\\' | '[' | ']') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    if out.ends_with('!') {
+        out.insert(out.len() - 1, '\\');
+    }
+    out
 }
 
 /// Holds what may be the start of a construct between chunks of one text.

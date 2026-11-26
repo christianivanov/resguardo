@@ -93,9 +93,10 @@ fn an_image_inside_a_link_is_removed_and_the_link_judged_on_its_own() {
         apply_split_everywhere("[![x](https://attacker.test/i.png)](https://docs.example.com/)"),
         "[[image removed]](https://docs.example.com/)"
     );
+    // The text of a removed link is escaped, so it cannot form a new link (see below).
     assert_eq!(
         apply("[![x](https://attacker.test/i.png)](https://attacker.test/)"),
-        "[image removed]"
+        r"\[image removed\]"
     );
 }
 
@@ -169,4 +170,37 @@ fn many_open_brackets_take_linear_time() {
     let start = Instant::now();
     let _ = apply(&text);
     assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
+}
+
+#[test]
+fn a_replacement_never_forms_a_new_link_with_what_follows() {
+    // Without escaping, these would become `[image removed](https://attacker.test/)` and
+    // `[x](https://attacker.test/)`: links the controls just removed.
+    assert_eq!(
+        apply_split_everywhere("![x](https://a.test/)(https://attacker.test/)"),
+        r"\[image removed\](https://attacker.test/)"
+    );
+    assert_eq!(
+        apply_split_everywhere("[[x]](https://attacker.test/)(https://attacker.test/)"),
+        r"\[x\](https://attacker.test/)"
+    );
+    // A removed link whose text ends in `!` cannot turn the next link into an image.
+    assert_eq!(
+        apply("[hola!](https://attacker.test/)[y](https://docs.example.com/)"),
+        r"hola\![y](https://docs.example.com/)"
+    );
+    // The usual case keeps the plain placeholder.
+    assert_eq!(apply("![x](https://a.test/) fin"), "[image removed] fin");
+}
+
+#[test]
+fn applying_the_controls_twice_changes_nothing() {
+    for text in [
+        "![x](https://a.test/)(https://attacker.test/)",
+        "[[x]](https://attacker.test/)(https://attacker.test/)",
+        "[a ![x](https://a.test/) b](https://docs.example.com/) ![y](//attacker.test/)",
+    ] {
+        let once = apply(text);
+        assert_eq!(apply(&once), once, "{text}");
+    }
 }
