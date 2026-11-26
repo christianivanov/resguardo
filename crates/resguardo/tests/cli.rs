@@ -2,14 +2,39 @@
 // Test helpers may panic: a failure to spawn the binary is a test failure.
 #![allow(clippy::expect_used)]
 
+use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+
+use resguardo_core::Limits;
 
 fn resguardo(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_resguardo"))
         .args(args)
         .output()
         .expect("failed to run resguardo")
+}
+
+/// Runs the binary with `input` on standard input. The input is written from another thread,
+/// so a large input cannot block while the child fills its output pipes.
+fn resguardo_with_stdin(args: &[&str], input: Vec<u8>) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_resguardo"))
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to run resguardo");
+    let mut stdin = child.stdin.take().expect("stdin is piped");
+    let writer = std::thread::spawn(move || stdin.write_all(&input));
+    let output = child
+        .wait_with_output()
+        .expect("failed to wait for resguardo");
+    writer
+        .join()
+        .expect("stdin writer panicked")
+        .expect("failed to write stdin");
+    output
 }
 
 fn repo_file(relative: &str) -> String {
@@ -158,4 +183,112 @@ fn key_create_rejects_an_invalid_principal_id() {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty(), "no key may be printed on error");
     assert!(stderr.contains("principal id"), "{stderr}");
+}
+
+/// Fake key from the AWS documentation, split so that secret scanners reading this file do
+/// not mistake it for a real one.
+const AWS_EXAMPLE_KEY: &str = concat!("AKIA", "IOSFODNN7EXAMPLE");
+
+#[test]
+fn scan_of_a_clean_text_exits_with_0() {
+    let output = resguardo_with_stdin(&["scan"], b"pedido 12345 enviado el lunes\n".to_vec());
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "0 findings, 0 flags\n"
+    );
+}
+
+#[test]
+fn scan_reports_a_secret_without_its_value_and_exits_with_1() {
+    let input = format!("my key is {AWS_EXAMPLE_KEY} ok\n");
+    let output = resguardo_with_stdin(&["scan"], input.into_bytes());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "stderr: {stderr}");
+    assert!(
+        stdout.contains("finding  secret  secret.aws_access_key  bytes 10..30"),
+        "{stdout}"
+    );
+    assert!(stdout.ends_with("1 finding, 0 flags\n"), "{stdout}");
+    for printed in [&stdout, &stderr] {
+        assert!(!printed.contains("AKIA"), "the value leaked: {printed}");
+    }
+}
+
+#[test]
+fn scan_of_a_file_shows_the_decoding_layers() {
+    let path = repo_file("crates/resguardo/tests/fixtures/scan-base64-secret.txt");
+    let output = resguardo(&["scan", "--file", &path]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stdout.contains(
+            "finding  secret  secret.aws_access_key  bytes 14..42  confidence 90  via base64"
+        ),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("QUtJQ") && !stdout.contains("AKIA"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn scan_reports_a_limit_flag_and_exits_with_1() {
+    // "secret text here for depth" in three Base64 layers, one more than the default
+    // max_decode_depth of 2.
+    let input = "x: WXpKV2FtTnRWakJKU0ZKc1pVaFJaMkZIVm5sYVUwSnRZak5KWjFwSFZuZGtSMmM5\n";
+    let output = resguardo_with_stdin(&["scan"], input.as_bytes().to_vec());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stdout.contains("flag     decode_depth  bytes 3..67  via base64,base64,base64"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn scan_accepts_input_at_the_limit() {
+    let input = b"word ".repeat(Limits::DEFAULT_MAX_BODY_BYTES / 5);
+    let output = resguardo_with_stdin(&["scan"], input);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn scan_refuses_input_over_the_limit_with_2() {
+    let input = vec![b'a'; Limits::DEFAULT_MAX_BODY_BYTES + 1];
+    let output = resguardo_with_stdin(&["scan"], input);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty(), "no partial report may be printed");
+    assert!(stderr.contains("larger than 1048576 bytes"), "{stderr}");
+}
+
+#[test]
+fn scan_refuses_invalid_utf8_with_2_without_quoting_it() {
+    let mut input = format!("{AWS_EXAMPLE_KEY} ").into_bytes();
+    input.extend_from_slice(&[0xff, 0xfe]);
+    let output = resguardo_with_stdin(&["scan"], input);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(stderr.contains("not valid UTF-8"), "{stderr}");
+    assert!(!stderr.contains("AKIA"), "the input leaked: {stderr}");
+}
+
+#[test]
+fn scan_reports_a_missing_file_with_2() {
+    let output = resguardo(&["scan", "--file", "/nonexistent/input.txt"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        stderr.contains("reading /nonexistent/input.txt"),
+        "{stderr}"
+    );
 }

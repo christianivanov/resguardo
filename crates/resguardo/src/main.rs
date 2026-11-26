@@ -1,6 +1,7 @@
 //! `resguardo` binary: HTTP proxy server and CLI.
 #![forbid(unsafe_code)]
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -8,8 +9,13 @@ use std::sync::Arc;
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
 use resguardo::server::{App, serve};
+use resguardo_core::config::ScanConfig;
 use resguardo_core::virtual_key::RANDOM_BYTES;
-use resguardo_core::{Config, OffsetDateTime, PrincipalId, VirtualKey};
+use resguardo_core::{Config, Limits, OffsetDateTime, PrincipalId, ScanReport, VirtualKey};
+use resguardo_scan::Pipeline;
+
+/// Largest input `resguardo scan` accepts: the default request body limit.
+const MAX_SCAN_INPUT_BYTES: usize = Limits::DEFAULT_MAX_BODY_BYTES;
 
 /// An egress boundary for LLM traffic: nothing leaves without policy,
 /// and every decision leaves a signed receipt.
@@ -38,6 +44,18 @@ enum Command {
         #[command(subcommand)]
         command: KeyCommand,
     },
+    /// Scan a text with the default detectors and print what was found, never the values.
+    ///
+    /// Each line gives the data class, the rule, the byte range and the decoding layers.
+    /// Input over 1 MiB (the default request body limit) or not valid UTF-8 is refused.
+    ///
+    /// Exits with 0 when nothing was found, 1 with any finding or limit flag, and 2 when the
+    /// input could not be scanned.
+    Scan {
+        /// File to scan. Without it, standard input is read.
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -62,6 +80,7 @@ enum KeyCommand {
 }
 
 /// What a command that completed reports through its exit code (ADR 0009).
+#[derive(Debug, PartialEq, Eq)]
 enum Outcome {
     /// The command did its job and the answer is yes: exit code 0.
     Success,
@@ -83,6 +102,7 @@ fn main() -> ExitCode {
         Command::Key {
             command: KeyCommand::Create { principal },
         } => key_create(&principal).map(|()| Outcome::Success),
+        Command::Scan { file } => scan(file.as_deref()),
     };
     match result {
         Ok(Outcome::Success) => ExitCode::SUCCESS,
@@ -221,4 +241,104 @@ fn key_create(principal: &str) -> anyhow::Result<()> {
         key.hash().as_str()
     );
     Ok(())
+}
+
+/// Scans a file or standard input. Output names classes, rules and byte ranges only, so it
+/// is safe to paste into a ticket.
+fn scan(file: Option<&Path>) -> anyhow::Result<Outcome> {
+    let bytes = match file {
+        Some(path) => {
+            let file =
+                std::fs::File::open(path).with_context(|| format!("reading {}", path.display()))?;
+            read_limited(file).with_context(|| format!("reading {}", path.display()))?
+        }
+        None => read_limited(std::io::stdin().lock()).context("reading standard input")?,
+    };
+    // The error is not shown: it would quote bytes of the input.
+    let Ok(text) = String::from_utf8(bytes) else {
+        bail!("the input is not valid UTF-8");
+    };
+    let pipeline = Pipeline::new(&ScanConfig::default())?;
+    let report = pipeline.scan_text("", &text)?;
+    print!("{}", format_report(&report));
+    Ok(scan_outcome(&report))
+}
+
+/// A flag means part of the input was not fully checked, so it is never reported as clean.
+fn scan_outcome(report: &ScanReport) -> Outcome {
+    if report.findings.is_empty() && report.flags.is_empty() {
+        Outcome::Success
+    } else {
+        Outcome::ProblemsFound
+    }
+}
+
+/// Reads at most [`MAX_SCAN_INPUT_BYTES`]; anything longer is refused, not cut, so a partial
+/// scan is never presented as a complete one.
+fn read_limited(reader: impl Read) -> anyhow::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    // `take` stops after one byte more than the limit: enough to know it was exceeded.
+    reader
+        .take(MAX_SCAN_INPUT_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_SCAN_INPUT_BYTES {
+        bail!("the input is larger than {MAX_SCAN_INPUT_BYTES} bytes");
+    }
+    Ok(bytes)
+}
+
+fn format_report(report: &ScanReport) -> String {
+    let mut out = String::new();
+    for finding in &report.findings {
+        out.push_str(&format!(
+            "finding  {}  {}  bytes {}..{}  confidence {}",
+            finding.class, finding.rule, finding.span.start, finding.span.end, finding.confidence
+        ));
+        if !finding.via.is_empty() {
+            out.push_str(&format!("  via {}", finding.via.join(",")));
+        }
+        out.push('\n');
+    }
+    for flag in &report.flags {
+        out.push_str(&format!(
+            "flag     {}  bytes {}..{}  via {}\n",
+            flag.limit,
+            flag.span.start,
+            flag.span.end,
+            flag.via.join(",")
+        ));
+    }
+    let plural = |n: usize, word: &str| format!("{n} {word}{}", if n == 1 { "" } else { "s" });
+    out.push_str(&format!(
+        "{}, {}\n",
+        plural(report.findings.len(), "finding"),
+        plural(report.flags.len(), "flag")
+    ));
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use resguardo_core::{ScanFlag, ScanLimit};
+
+    use super::*;
+
+    #[test]
+    fn a_flag_without_findings_is_not_clean() {
+        let report = ScanReport {
+            findings: Vec::new(),
+            flags: vec![ScanFlag {
+                limit: ScanLimit::DerivedBytes,
+                pointer: String::new(),
+                span: 0..10,
+                via: vec!["base64".into()],
+            }],
+        };
+        assert_eq!(scan_outcome(&report), Outcome::ProblemsFound);
+    }
+
+    #[test]
+    fn an_empty_report_is_clean() {
+        assert_eq!(scan_outcome(&ScanReport::default()), Outcome::Success);
+    }
 }

@@ -144,6 +144,18 @@ client.messages.create(model="claude-sonnet-5-5", max_tokens=256, messages=[{"ro
 
 Claude Code works the same way through `ANTHROPIC_BASE_URL`; it needs streaming, which arrives in M4. See [running Claude Code through Resguardo](research/claude-code-gateway.md).
 
+## Scanning a text
+
+`resguardo scan` runs the detectors on a file or on standard input, without a configuration or a running proxy. It prints the data class, the rule, the byte range and the decoding layers of each finding, never the value, so the output is safe to paste into a ticket.
+
+```console
+$ echo "deploy token: QUtJQUlPU0ZPRE5ON0VYQU1QTEU=" | resguardo scan
+finding  secret  secret.aws_access_key  bytes 14..42  confidence 90  via base64
+1 finding, 0 flags
+```
+
+A `flag` line means a limit was reached (for example, more encoding layers than `max_decode_depth`), so part of the text was not fully checked. The command exits with 1 when there is any finding or flag, so it can stop a git hook or a CI job: `resguardo scan --file .env || exit 1`. Input over 1 MiB or not valid UTF-8 is refused with exit code 2, never scanned in part.
+
 ## Errors
 
 Resguardo answers in the error shape of the API that was called, so each SDK raises its usual exception. The body carries Resguardo's code and the request id, and never any request content.

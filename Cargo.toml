@@ -18,6 +18,7 @@ resguardo-core = { path = "crates/resguardo-core", version = "0.0.0" }
 resguardo-egress = { path = "crates/resguardo-egress", version = "0.0.0" }
 resguardo-mock-upstream = { path = "tools/mock-upstream", version = "0.0.0" }
 resguardo-proto = { path = "crates/resguardo-proto", version = "0.0.0" }
+resguardo-scan = { path = "crates/resguardo-scan", version = "0.0.0" }
 
 # External crates. Versions checked on crates.io on 2026-11-25 (base64, regex and
 # unicode-normalization on 2026-11-26).

@@ -1074,6 +1074,7 @@ dependencies = [
  "resguardo-egress",
  "resguardo-mock-upstream",
  "resguardo-proto",
+ "resguardo-scan",
  "serde_json",
  "tokio",
  "uuid",
