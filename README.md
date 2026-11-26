@@ -26,7 +26,7 @@ Every prompt your application sends to a model provider leaves your network. It 
 Resguardo is a single Rust binary that sits between your applications and the OpenAI and Anthropic APIs, or any OpenAI-compatible server (LiteLLM, vLLM, Ollama). Applications keep their official SDKs: change the base URL and the key, nothing else.
 
 > [!WARNING]
-> **Pre-alpha.** The proxy works end to end with the official SDKs against a mock provider. Scanning and the signed audit log are not built yet, so Resguardo refuses real providers for now.
+> **Pre-alpha.** The proxy works end to end with the official SDKs against a mock provider. The detectors work on their own (`resguardo scan`), but the proxy does not use them until policy arrives in M3, and the signed audit log is not built yet, so Resguardo refuses real providers for now.
 
 ## Highlights
 
@@ -89,7 +89,7 @@ One command starts a mock provider and Resguardo, then calls them with the offic
 | --- | --- | --- |
 | M0 | Foundations: workspace, licenses, ADRs, threat model | ✅ |
 | M1 | Proxy: both APIs, virtual keys, limits, egress with post-quantum TLS | ✅ |
-| M2 | Detectors: secrets, invisible text, de-obfuscation | ⏳ |
+| M2 | Detectors: secrets, invisible text, de-obfuscation, `resguardo scan` | ✅ |
 | M3 | Spanish validators, policy and redaction | ⏳ |
 | M4 | Streaming and response controls | ⏳ |
 | M5 | Signed audit log and `resguardo verify-log` | ⏳ |
