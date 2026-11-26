@@ -122,6 +122,8 @@ impl Default for ScanConfig {
 pub struct StreamConfig {
     pub overlap_bytes: usize,
     pub buffer_flush_bytes: usize,
+    /// Largest SSE event, and line, a stream may carry (ADR 0014).
+    pub max_event_bytes: usize,
 }
 
 impl Default for StreamConfig {
@@ -129,6 +131,7 @@ impl Default for StreamConfig {
         Self {
             overlap_bytes: 256,
             buffer_flush_bytes: 2048,
+            max_event_bytes: 1024 * 1024,
         }
     }
 }
@@ -362,6 +365,9 @@ fn validate_stream(stream: &StreamConfig, problems: &mut Vec<String>) {
     }
     if stream.buffer_flush_bytes == 0 {
         problems.push("[stream] buffer_flush_bytes must be greater than 0".into());
+    }
+    if stream.max_event_bytes == 0 {
+        problems.push("[stream] max_event_bytes must be greater than 0".into());
     }
 }
 
@@ -849,6 +855,16 @@ credential_env = "OPENAI_API_KEY"
     fn unknown_scan_limits_are_rejected() {
         let global = "\n[policy.scan_limits]\ndepth = \"block\"\n";
         assert_rejected(&[BASE, global, OPENAI_UPSTREAM], "depth");
+    }
+
+    #[test]
+    fn max_event_bytes_defaults_to_1_mib_and_must_be_positive() {
+        assert_eq!(StreamConfig::default().max_event_bytes, 1024 * 1024);
+        let stream = "\n[stream]\nmax_event_bytes = 0\n";
+        assert_rejected(
+            &[BASE, stream, OPENAI_UPSTREAM],
+            "[stream] max_event_bytes must be greater than 0",
+        );
     }
 
     #[test]

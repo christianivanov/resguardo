@@ -23,6 +23,7 @@ entropy_min_len = 20
 [stream]
 overlap_bytes = 256
 buffer_flush_bytes = 2048
+max_event_bytes = 1048576          # largest SSE event or line from the provider (ADR 0014)
 
 # Global action per data class: allow, flag, redact or block. Every class is required.
 [policy.actions]
