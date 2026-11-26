@@ -11,6 +11,7 @@ use crate::aggregate::{
 };
 use crate::card::CardScanner;
 use crate::decode::{Layer, decode, find_candidates};
+use crate::email::EmailScanner;
 use crate::entropy::EntropyScanner;
 use crate::es_id::EsIdScanner;
 use crate::normalize::normalize;
@@ -85,6 +86,7 @@ impl Pipeline {
                 Box::new(EsIdScanner),
                 Box::new(CardScanner),
                 Box::new(PhoneScanner),
+                Box::new(EmailScanner::new()?),
                 Box::new(EntropyScanner {
                     threshold: config.entropy_threshold,
                     min_len: config.entropy_min_len,

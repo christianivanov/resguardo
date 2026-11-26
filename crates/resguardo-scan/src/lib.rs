@@ -9,6 +9,7 @@
 mod aggregate;
 mod card;
 mod decode;
+mod email;
 mod entropy;
 mod es_id;
 mod normalize;
