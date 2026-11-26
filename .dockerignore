@@ -4,6 +4,5 @@ fuzz/corpus/
 fuzz/artifacts/
 data/
 .git/
-docs/SOLUTION.md
-docs/REVIEW.md
-docs/PROPOSAL-2026-10.md
+# Documentation is not needed to build, and local notes must never enter an image.
+docs/
