@@ -64,6 +64,8 @@ docs/                 ADRs, threat model, accuracy and benchmark reports
 fixtures/             synthetic requests, SSE streams, accuracy corpus
 tools/mock-upstream/  fake OpenAI and Anthropic server
 tools/sdk-smoke/      official Python SDKs against Resguardo and the mock (uv)
+tools/accuracy/       generator of the accuracy corpus (Python, fixed seed)
+tools/bench/          scanning throughput and added latency
 lab/                  docker compose exfiltration lab with an internal network
 fuzz/                 cargo-fuzz targets
 ```

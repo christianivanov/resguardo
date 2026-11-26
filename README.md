@@ -139,7 +139,7 @@ What it does not do: load balancing, fallbacks, caching, budgets, dashboards, em
 | M3 | Spanish ids, IBAN, cards, phones and email; policy and redaction | ✅ |
 | M4 | Streaming, response scanning, image and link controls, fuzzing | ✅ |
 | M5 | Signed audit log, `resguardo init` and `resguardo verify-log` | ✅ |
-| M6 | Accuracy corpus, benchmark, exfiltration lab, deployment guide, CI and release | ✅ (v0.1.0 tag pending) |
+| M6 | Accuracy corpus, benchmark, exfiltration lab, deployment guide, CI and release | 🚧 lab run and v0.1.0 tag pending |
 
 ## Limits
 
