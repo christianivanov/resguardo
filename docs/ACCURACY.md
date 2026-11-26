@@ -1,6 +1,6 @@
 # Accuracy
 
-How often the detectors find what they should, and how often they find something that is not there. Measured on a synthetic Spanish corpus; the numbers below are what `resguardo accuracy` prints today, and the CI fails if any of them gets worse ([ADR 0016](adr/0016-measuring-accuracy-and-latency.md)).
+How often the detectors find what they should, and how often they find something that is not there. Measured on a synthetic Spanish corpus; the numbers below are what `resguardo accuracy` prints today, and `resguardo accuracy --baseline` fails if any of them gets worse ([ADR 0016](adr/0016-measuring-accuracy-and-latency.md)).
 
 ## Corpus
 
@@ -42,7 +42,7 @@ The false-positive rate is over the 306 negatives. A false positive is a text wh
 ## Reproducing and updating
 
 ```console
-$ resguardo accuracy --baseline fixtures/accuracy/baseline.json     # what the CI runs
+$ resguardo accuracy --baseline fixtures/accuracy/baseline.json     # exits with 1 if anything got worse
 $ python3 -I tools/accuracy/generate.py                             # regenerate the corpus
 $ resguardo accuracy --write-baseline fixtures/accuracy/baseline.json
 ```

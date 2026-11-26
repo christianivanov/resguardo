@@ -29,7 +29,7 @@ $ docker compose -f lab/docker-compose.yml exec resguardo \
 $ docker compose -f lab/docker-compose.yml down -v
 ```
 
-The protected run exits with 0 and the unprotected one with 1, so the lab can run in CI.
+The protected run exits with 0 and the unprotected one with 1, so a script can tell them apart.
 
 ## What it shows
 

@@ -116,7 +116,7 @@ Measured on a synthetic Spanish corpus of 406 texts and on a 2017 laptop; both r
 | Latency added, receipt flushed to disk (`fsync`) | 10.7 ms p50, dominated by this laptop's disk |
 | Latency added, without `fsync` | 0.5 ms p50 |
 
-The CI fails if any detector gets worse than these numbers.
+`resguardo accuracy --baseline fixtures/accuracy/baseline.json` fails if any detector gets worse than these numbers.
 
 ## How it compares
 
@@ -139,7 +139,7 @@ What it does not do: load balancing, fallbacks, caching, budgets, dashboards, em
 | M3 | Spanish ids, IBAN, cards, phones and email; policy and redaction | ✅ |
 | M4 | Streaming, response scanning, image and link controls, fuzzing | ✅ |
 | M5 | Signed audit log, `resguardo init` and `resguardo verify-log` | ✅ |
-| M6 | Accuracy corpus, benchmark, exfiltration lab, deployment guide, CI and release | 🚧 lab run and v0.1.0 tag pending |
+| M6 | Accuracy corpus, benchmark, exfiltration lab, deployment guide and release | 🚧 lab run and v0.1.0 tag pending |
 
 ## Limits
 
