@@ -12,6 +12,7 @@ mod decode;
 mod email;
 mod entropy;
 mod es_id;
+mod iban;
 mod normalize;
 mod phone;
 mod pipeline;

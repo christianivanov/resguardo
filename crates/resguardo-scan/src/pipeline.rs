@@ -14,6 +14,7 @@ use crate::decode::{Layer, decode, find_candidates};
 use crate::email::EmailScanner;
 use crate::entropy::EntropyScanner;
 use crate::es_id::EsIdScanner;
+use crate::iban::IbanScanner;
 use crate::normalize::normalize;
 use crate::phone::PhoneScanner;
 use crate::scanner::Scanner;
@@ -84,6 +85,7 @@ impl Pipeline {
             scanners: vec![
                 Box::new(SecretScanner::new()?),
                 Box::new(EsIdScanner),
+                Box::new(IbanScanner),
                 Box::new(CardScanner),
                 Box::new(PhoneScanner),
                 Box::new(EmailScanner::new()?),

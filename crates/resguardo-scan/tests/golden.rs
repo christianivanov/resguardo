@@ -126,6 +126,25 @@ fn g1_cif_of_a_public_body_needs_a_letter() {
     assert_eq!(scan("Q28260008"), ScanReport::default());
 }
 
+// --- G.1, IBAN --------------------------------------------------------------------------
+
+#[test]
+fn g1_iban_in_print_format_is_an_iban() {
+    assert_eq!(
+        only_finding("ES91 2100 0418 4502 0005 1332"),
+        (DataClass::Iban, "iban.mod97".to_owned(), 0..29)
+    );
+    assert_eq!(
+        scan("ES91 2100 0418 4502 0005 1332").findings[0].confidence,
+        95
+    );
+}
+
+#[test]
+fn g1_iban_whose_mod_97_is_not_1_is_not_a_finding() {
+    assert_eq!(scan("ES9121000418450200051333"), ScanReport::default());
+}
+
 // --- G.1, cards and phones -------------------------------------------------------------
 
 #[test]
