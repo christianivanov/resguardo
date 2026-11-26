@@ -34,7 +34,7 @@ use resguardo_core::{
 use resguardo_egress::{Egress, OutboundRequest, UpstreamAnswer, UpstreamResponse, UpstreamStream};
 use resguardo_policy::Policy;
 use resguardo_proto::{
-    ApiFormat, ParsedRequest, ResponseControls, check_query, parse_request, redact, route,
+    ApiFormat, ParsedRequest, Removals, ResponseControls, check_query, parse_request, redact, route,
 };
 use resguardo_scan::Pipeline;
 use serde_json::Value;
@@ -42,7 +42,7 @@ use serde_json::json;
 use tokio::net::TcpListener;
 
 use crate::rate_limit::{RateLimiter, retry_after_secs};
-use crate::receipt::{Receipt, micros, outcome_in_background};
+use crate::receipt::{Receipt, micros, outcome_in_background, removals_json};
 
 const X_API_KEY: HeaderName = HeaderName::from_static("x-api-key");
 const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-resguardo-request-id");
@@ -282,7 +282,7 @@ async fn proceed(
     match answer {
         UpstreamAnswer::Whole(response) => {
             let upstream_us = micros(upstream_started);
-            let (response, response_findings) =
+            let (response, response_findings, removed) =
                 guard_whole(Arc::clone(app), principal.clone(), format, response).await?;
             let total = micros(receipt.started);
             let fields = BTreeMap::from([
@@ -294,6 +294,7 @@ async fn proceed(
                     json!(total.saturating_sub(upstream_us)),
                 ),
                 ("response_findings".to_owned(), response_findings),
+                ("response_controls".to_owned(), removals_json(removed)),
             ]);
             // The response does not wait for its outcome: only the decision entry must be
             // on disk before anything leaves (ADR 0003).
@@ -318,7 +319,7 @@ async fn guard_whole(
     principal: Principal,
     format: ApiFormat,
     response: UpstreamResponse,
-) -> Result<(UpstreamResponse, Value), Failure> {
+) -> Result<(UpstreamResponse, Value, Removals), Failure> {
     tokio::task::spawn_blocking(move || {
         crate::response::guard_whole(&app, &principal, format, response)
     })

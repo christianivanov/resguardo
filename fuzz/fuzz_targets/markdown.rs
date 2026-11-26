@@ -1,8 +1,9 @@
 //! Response controls on arbitrary text, split at arbitrary points (M4.5).
 //!
-//! Properties: no panic; the same output wherever the text is split; never more held than
-//! the hold limit plus a few characters; and no complete remote image left in the output,
-//! checked by an independent detector without the hold limit.
+//! Properties: no panic; the same output and the same removal counts (ADR 0017) wherever
+//! the text is split; a text with nothing removed comes out unchanged; never more held than the hold limit plus a few characters; and no
+//! complete remote image left in the output, checked by an independent detector without
+//! the hold limit.
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
@@ -88,7 +89,7 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
     let controls = ResponseControls::new(true, true, ["docs.example.com".to_owned()]);
-    let whole = controls.apply(text);
+    let (whole, removed) = controls.apply_counted(text);
 
     let mut split = usize::from(*a).min(text.len());
     while !text.is_char_boundary(split) {
@@ -101,6 +102,11 @@ fuzz_target!(|data: &[u8]| {
     assert!(filter.held() <= HOLD_LIMIT + 8);
     out.push_str(&filter.finish());
     assert_eq!(out, whole);
+    assert_eq!(filter.removed(), removed);
+    // The receipt misses no change: a text with nothing removed comes out unchanged.
+    if removed.is_empty() {
+        assert_eq!(whole, text);
+    }
 
     let left = remote_images(&whole);
     assert!(left.is_empty(), "remote images left: {left:?}");

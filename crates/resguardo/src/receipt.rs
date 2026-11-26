@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use resguardo_core::{AuditKind, BlockCode, DataClass, Principal, ScanReport};
+use resguardo_proto::Removals;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -172,6 +173,19 @@ pub(crate) fn class_counts(report: &ScanReport) -> Value {
             .map(|(class, n)| (class.as_str().to_owned(), n))
             .collect::<BTreeMap<_, _>>()
     )
+}
+
+/// What the response controls removed (ADR 0017): `images_removed` and `links_removed`,
+/// each only when above zero, so an untouched response has `{}`. Counts only, never URLs.
+pub(crate) fn removals_json(removed: Removals) -> Value {
+    let mut counts = BTreeMap::new();
+    if removed.images > 0 {
+        counts.insert("images_removed", removed.images);
+    }
+    if removed.links > 0 {
+        counts.insert("links_removed", removed.links);
+    }
+    json!(counts)
 }
 
 /// Integer microseconds since `since` (no floats in the log).

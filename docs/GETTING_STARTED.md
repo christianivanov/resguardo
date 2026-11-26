@@ -130,7 +130,7 @@ $ curl -s http://127.0.0.1:8787/v1/chat/completions \
 $ curl -s http://127.0.0.1:9000/__mock/requests
 ```
 
-**9. Verify the receipts.** Anyone with the public key can check that no entry was changed, removed or reordered. The log holds metadata only: principal, model, sizes, hashes, finding classes and counts, decision, status and latencies, never prompt content.
+**9. Verify the receipts.** Anyone with the public key can check that no entry was changed, removed or reordered. The log holds metadata only: principal, model, sizes, hashes, finding classes and counts, decision, status, latencies and how many images and links were removed from the answer, never prompt content or URLs.
 
 ```console
 $ resguardo verify-log audit.jsonl --pubkey signing.pub

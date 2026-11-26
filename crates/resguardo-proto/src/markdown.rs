@@ -28,6 +28,28 @@ pub struct ResponseControls {
     allowed_hosts: BTreeSet<String>,
 }
 
+/// What the controls removed from a text, for the receipt (ADR 0017). Counts only: a URL
+/// may carry the very data an injection tried to send out, so it is never kept.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Removals {
+    /// Remote images replaced by the placeholder.
+    pub images: u64,
+    /// Links that kept only their text.
+    pub links: u64,
+}
+
+impl Removals {
+    pub fn is_empty(&self) -> bool {
+        self.images == 0 && self.links == 0
+    }
+
+    /// Adds the counts of `other`.
+    pub fn add(&mut self, other: Self) {
+        self.images = self.images.saturating_add(other.images);
+        self.links = self.links.saturating_add(other.links);
+    }
+}
+
 /// Where a Markdown destination points.
 enum Destination {
     /// No scheme and no authority: `#part`, `/docs/a`, `img.png`.
@@ -41,18 +63,16 @@ enum Destination {
 
 /// How a possible construct at a `[` turned out.
 enum Parsed {
+    /// `removed`: what was removed inside `replacement`.
     Complete {
         end: usize,
         replacement: String,
+        removed: Removals,
     },
     /// A remote image to remove: its placeholder depends on the next character.
-    RemovedImage {
-        end: usize,
-    },
+    RemovedImage { end: usize },
     /// Brackets closed at `close` but not followed by `(`.
-    NotAConstruct {
-        close: usize,
-    },
+    NotAConstruct { close: usize },
     /// The text ended before the construct did, within the limit.
     Incomplete,
     /// [`HOLD_LIMIT`] bytes passed without the construct closing.
@@ -89,8 +109,13 @@ impl ResponseControls {
     pub fn push(&self, state: &mut MarkdownState, text: &str) -> String {
         let mut buf = std::mem::take(&mut state.held);
         buf.push_str(text);
-        let (out, held, after_close) =
-            self.process(&buf, false, state.after_bang, state.after_close);
+        let (out, held, after_close) = self.process(
+            &buf,
+            false,
+            state.after_bang,
+            state.after_close,
+            &mut state.removed,
+        );
         state.held = held;
         state.after_bang = ends_in_bang(&out, state.after_bang);
         state.after_close = after_close;
@@ -100,7 +125,13 @@ impl ResponseControls {
     /// The text ended: resolves and returns whatever `state` held.
     pub fn finish(&self, state: &mut MarkdownState) -> String {
         let buf = std::mem::take(&mut state.held);
-        let (out, _, after_close) = self.process(&buf, true, state.after_bang, state.after_close);
+        let (out, _, after_close) = self.process(
+            &buf,
+            true,
+            state.after_bang,
+            state.after_close,
+            &mut state.removed,
+        );
         state.after_bang = ends_in_bang(&out, state.after_bang);
         state.after_close = after_close;
         out
@@ -109,34 +140,41 @@ impl ResponseControls {
     /// The controls applied to the content between a construct's brackets. If the result
     /// does not have balanced brackets (an image removed up to the content's end took a
     /// `]` with it, for example), its brackets are escaped, so the construct's own `]`
-    /// still closes it and nothing new can form around it.
-    fn contained(&self, text: &str) -> String {
-        let out = self.apply(text);
+    /// still closes it and nothing new can form around it. Returns what was removed in it.
+    fn contained(&self, text: &str) -> (String, Removals) {
+        let (out, removed) = self.apply_counted(text);
         if balanced(&out) {
-            out
+            (out, removed)
         } else {
-            escape_brackets(&out)
+            (escape_brackets(&out), removed)
         }
     }
 
     /// Applies the controls to a complete text.
     pub fn apply(&self, text: &str) -> String {
+        self.apply_counted(text).0
+    }
+
+    /// Applies the controls to a complete text, and says what they removed.
+    pub fn apply_counted(&self, text: &str) -> (String, Removals) {
         let mut filter = MarkdownFilter::new(self);
         let mut out = filter.push(text);
         out.push_str(&filter.finish());
-        out
+        (out, filter.removed())
     }
 
     /// Returns what can be released and what must be held. With `at_end`, nothing is held.
     /// `bang_before`: the text released before `buf` ends in a plain `!`. `close_before`: it
     /// ends in a `]` the controls wrote. Returns the released text, the held text and the
-    /// new `close_before`.
+    /// new `close_before`. What is removed in the released text is added to `removed`;
+    /// what is held is counted when a later call releases it.
     fn process(
         &self,
         buf: &str,
         at_end: bool,
         bang_before: bool,
         close_before: bool,
+        removed: &mut Removals,
     ) -> (String, String, bool) {
         let bytes = buf.as_bytes();
         let mut out = String::with_capacity(buf.len());
@@ -156,14 +194,20 @@ impl ResponseControls {
             append(&mut out, &mut close, false, slice(buf, i, start));
             let removes_image = image && self.strip_remote_images;
             match self.parse(buf, start, open, image) {
-                Parsed::Complete { end, replacement } => {
+                Parsed::Complete {
+                    end,
+                    replacement,
+                    removed: inside,
+                } => {
                     append(&mut out, &mut close, true, &replacement);
+                    removed.add(inside);
                     i = end;
                 }
                 Parsed::RemovedImage { end } => {
                     match placeholder(ends_in_bang(&out, bang_before), bytes, end, at_end) {
                         Some(text) => {
                             append(&mut out, &mut close, true, text);
+                            removed.images = removed.images.saturating_add(1);
                             i = end;
                         }
                         None => {
@@ -177,8 +221,9 @@ impl ResponseControls {
                 // brackets, and so do its replacements, so the same `]` still closes them.
                 Parsed::NotAConstruct { close: bracket } => {
                     append(&mut out, &mut close, false, slice(buf, start, open + 1));
-                    let content = self.contained(slice(buf, open + 1, bracket));
+                    let (content, inside) = self.contained(slice(buf, open + 1, bracket));
                     append(&mut out, &mut close, false, &content);
+                    removed.add(inside);
                     append(&mut out, &mut close, true, "]");
                     i = bracket + 1;
                 }
@@ -191,6 +236,7 @@ impl ResponseControls {
                         placeholder(ends_in_bang(&out, bang_before), bytes, bytes.len(), true)
                             .unwrap_or(IMAGE_REMOVED);
                     append(&mut out, &mut close, true, text);
+                    removed.images = removed.images.saturating_add(1);
                     i = bytes.len();
                 }
                 Parsed::Overflow if removes_image => {
@@ -198,6 +244,7 @@ impl ResponseControls {
                     match placeholder(ends_in_bang(&out, bang_before), bytes, end, at_end) {
                         Some(text) => {
                             append(&mut out, &mut close, true, text);
+                            removed.images = removed.images.saturating_add(1);
                             i = end;
                         }
                         None => {
@@ -280,22 +327,24 @@ impl ResponseControls {
 
         let text = slice(buf, open + 1, close);
         let destination = slice(buf, close + 2, end);
-        let replacement = if image {
+        let (replacement, removed) = if image {
             let local = matches!(
                 classify(destination),
                 Destination::Local | Destination::Data
             );
             // A renderer may not accept it as an image (a destination with a space, say) and
             // read its parts as Markdown. A destination the controls would change is not a
-            // real one: the image is removed.
+            // real one: the image is removed. (Only the result matters here: what this check
+            // removes is never released, so it is not counted.)
             let tampered = self.apply(destination) != destination;
             if (self.strip_remote_images && !local) || tampered {
                 return Parsed::RemovedImage { end: end + 1 };
             }
-            format!("![{}]({destination})", self.contained(text))
+            let (inner, removed) = self.contained(text);
+            (format!("![{inner}]({destination})"), removed)
         } else {
             // The link text may hold an image of its own.
-            let inner = self.contained(text);
+            let (inner, mut removed) = self.contained(text);
             let allowed = match classify(destination) {
                 Destination::Local => true,
                 Destination::Web(Some(host)) => self.allowed_hosts.contains(&host),
@@ -304,14 +353,16 @@ impl ResponseControls {
             // As for images: a destination the controls would change is not a real one.
             let tampered = self.apply(destination) != destination;
             if (self.strip_links_outside && !allowed) || tampered {
-                escape_link_text(&inner)
+                removed.links = removed.links.saturating_add(1);
+                (escape_link_text(&inner), removed)
             } else {
-                format!("[{inner}]({destination})")
+                (format!("[{inner}]({destination})"), removed)
             }
         };
         Parsed::Complete {
             end: end + 1,
             replacement,
+            removed,
         }
     }
 }
@@ -432,12 +483,19 @@ pub struct MarkdownState {
     held: String,
     after_bang: bool,
     after_close: bool,
+    /// What was removed in the text released so far.
+    removed: Removals,
 }
 
 impl MarkdownState {
     /// Bytes held, never more than [`HOLD_LIMIT`] plus a few characters.
     pub fn held(&self) -> usize {
         self.held.len()
+    }
+
+    /// What the controls removed in the text released so far (ADR 0017).
+    pub fn removed(&self) -> Removals {
+        self.removed
     }
 }
 
@@ -469,6 +527,11 @@ impl<'a> MarkdownFilter<'a> {
     /// Bytes held, never more than [`HOLD_LIMIT`] plus a few characters.
     pub fn held(&self) -> usize {
         self.state.held()
+    }
+
+    /// What the controls removed in the text released so far (ADR 0017).
+    pub fn removed(&self) -> Removals {
+        self.state.removed()
     }
 }
 
