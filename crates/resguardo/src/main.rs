@@ -9,6 +9,7 @@ use std::sync::Arc;
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
 use resguardo::server::{App, serve};
+use resguardo_audit::{AuditLog, KeyError, PublicKey, SigningKey, VerifyError};
 use resguardo_core::config::ScanConfig;
 use resguardo_core::virtual_key::RANDOM_BYTES;
 use resguardo_core::{Config, Limits, OffsetDateTime, PrincipalId, ScanReport, VirtualKey};
@@ -55,6 +56,32 @@ enum Command {
         /// File to scan. Without it, standard input is read.
         #[arg(long)]
         file: Option<PathBuf>,
+    },
+    /// Create the signing key pair and the log folder, and the configuration if it is
+    /// missing (from the example).
+    ///
+    /// Existing keys are never replaced. With --rotate-key, a new pair replaces the current
+    /// one: the log records the rotation, signed with the old key, the old public key is kept
+    /// as <public_key>.<seq> and the old private key is deleted.
+    Init {
+        /// Path to the configuration file.
+        #[arg(long, default_value = "resguardo.toml")]
+        config: PathBuf,
+        /// Replace the current key pair and record the rotation in the log.
+        #[arg(long)]
+        rotate_key: bool,
+    },
+    /// Check the hash chain, signatures and sequence of an audit log.
+    ///
+    /// Give the public key that signed the first entry: rotations are followed from there.
+    /// Exits with 0 when every entry verifies, 1 at the first one that does not (with its
+    /// line and the reason: format, hash, sig, prev or seq) and 2 when it cannot read.
+    VerifyLog {
+        /// The audit log (JSON Lines).
+        path: PathBuf,
+        /// Public key file (`ed25519:...`).
+        #[arg(long)]
+        pubkey: PathBuf,
     },
 }
 
@@ -103,6 +130,13 @@ fn main() -> ExitCode {
             command: KeyCommand::Create { principal },
         } => key_create(&principal).map(|()| Outcome::Success),
         Command::Scan { file } => scan(file.as_deref()),
+        Command::Init { config, rotate_key } => if rotate_key {
+            rotate(&config)
+        } else {
+            init(&config)
+        }
+        .map(|()| Outcome::Success),
+        Command::VerifyLog { path, pubkey } => verify_log(&path, &pubkey),
     };
     match result {
         Ok(Outcome::Success) => ExitCode::SUCCESS,
@@ -315,6 +349,109 @@ fn format_report(report: &ScanReport) -> String {
         plural(report.flags.len(), "flag")
     ));
     out
+}
+
+/// Example configuration written by `init` when there is none.
+const EXAMPLE_CONFIG: &str = include_str!("../../../config/resguardo.example.toml");
+
+fn init(path: &Path) -> anyhow::Result<()> {
+    if !path.exists() {
+        std::fs::write(path, EXAMPLE_CONFIG)
+            .with_context(|| format!("writing {}", path.display()))?;
+        eprintln!(
+            "Wrote {} from the example configuration: edit it before `resguardo run`.",
+            path.display()
+        );
+    }
+    let config = load_config(path)?;
+    let audit = &config.audit;
+    for file in [&audit.path, &audit.signing_key, &audit.public_key] {
+        create_parent(file)?;
+    }
+    let key = match SigningKey::create_files(&audit.signing_key, &audit.public_key) {
+        Ok(key) => key,
+        Err(KeyError::Exists(existing)) => bail!(
+            "{} already exists; keys are never replaced here, use `resguardo init --rotate-key`",
+            existing.display()
+        ),
+        Err(error) => return Err(error.into()),
+    };
+    eprintln!(
+        "Signing key: {} (owner-only). Public key: {}. Give the public key to auditors:",
+        audit.signing_key.display(),
+        audit.public_key.display()
+    );
+    println!("{}", key.public_key().to_text());
+    Ok(())
+}
+
+/// Owner-only folders for the log and the keys.
+fn create_parent(file: &Path) -> anyhow::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    let Some(parent) = file.parent().filter(|p| !p.as_os_str().is_empty()) else {
+        return Ok(());
+    };
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(parent)
+        .with_context(|| format!("creating {}", parent.display()))
+}
+
+/// ADR 0015: the new pair is written aside first, then the rotation is recorded with the
+/// old key, then the files are swapped. A crash in between leaves a log that refuses to
+/// start until the new files are in place, never one signed with the wrong key.
+fn rotate(path: &Path) -> anyhow::Result<()> {
+    let config = load_config(path)?;
+    let audit = &config.audit;
+    let old = SigningKey::load(&audit.signing_key)?;
+    let log = AuditLog::open(&audit.path, old, audit.fsync)?;
+    let new_private = with_suffix(&audit.signing_key, "new");
+    let new_public = with_suffix(&audit.public_key, "new");
+    let new = SigningKey::create_files(&new_private, &new_public)?;
+    let seq = log.rotate_key(new.clone())?;
+    std::fs::remove_file(&audit.signing_key)
+        .with_context(|| format!("removing the old key {}", audit.signing_key.display()))?;
+    let kept = with_suffix(&audit.public_key, &seq.to_string());
+    std::fs::rename(&audit.public_key, &kept)
+        .with_context(|| format!("keeping the old public key as {}", kept.display()))?;
+    std::fs::rename(&new_private, &audit.signing_key)
+        .with_context(|| format!("installing {}", audit.signing_key.display()))?;
+    std::fs::rename(&new_public, &audit.public_key)
+        .with_context(|| format!("installing {}", audit.public_key.display()))?;
+    eprintln!(
+        "Key rotated at entry {seq}. Old public key kept as {}; old private key deleted. \
+         Restart `resguardo run`. New public key:",
+        kept.display()
+    );
+    println!("{}", new.public_key().to_text());
+    Ok(())
+}
+
+fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(".");
+    name.push(suffix);
+    PathBuf::from(name)
+}
+
+/// ADR 0009: 0 intact, 1 a line fails, 2 the log or key cannot be read.
+fn verify_log(path: &Path, pubkey: &Path) -> anyhow::Result<Outcome> {
+    let key = PublicKey::load(pubkey)?;
+    let file = std::fs::File::open(path).with_context(|| format!("reading {}", path.display()))?;
+    match resguardo_audit::verify_log(std::io::BufReader::new(file), &key) {
+        Ok(verified) => {
+            println!("{}: OK ({} entries)", path.display(), verified.entries);
+            Ok(Outcome::Success)
+        }
+        Err(VerifyError::Failed { line, reason }) => {
+            println!("{}: line {line}: {reason}", path.display());
+            Ok(Outcome::ProblemsFound)
+        }
+        Err(error @ VerifyError::Io(_)) => {
+            Err(anyhow::Error::new(error).context(path.display().to_string()))
+        }
+    }
 }
 
 #[cfg(test)]

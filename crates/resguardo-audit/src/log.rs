@@ -226,8 +226,9 @@ impl AuditLog {
     }
 }
 
-/// `seq` and `hash` of the last line, if it verifies with `key` (or is the rotation that
-/// introduced `key`).
+/// `seq` and `hash` of the last line, if it verifies with `key`. A rotation as last line
+/// must announce `key` itself: otherwise the rotation was written but the new key never
+/// installed, and entries signed now would not verify.
 fn last_entry(line: &[u8], key: &SigningKey) -> Option<(u64, String)> {
     let Value::Object(entry) = serde_json::from_slice::<Value>(line).ok()? else {
         return None;
@@ -239,11 +240,15 @@ fn last_entry(line: &[u8], key: &SigningKey) -> Option<(u64, String)> {
         return None;
     }
     let public = key.public_key();
-    let signature = URL_SAFE_NO_PAD.decode(entry.get("sig")?.as_str()?).ok()?;
-    let rotated_to_key = entry.get("kind").and_then(Value::as_str)
-        == Some(AuditKind::KeyRotation.as_str())
-        && entry.get("public_key").and_then(Value::as_str) == Some(public.to_text().as_str());
-    (public.verify(&computed, &signature) || rotated_to_key).then_some((seq, hash))
+    let is_rotation =
+        entry.get("kind").and_then(Value::as_str) == Some(AuditKind::KeyRotation.as_str());
+    let valid = if is_rotation {
+        entry.get("public_key").and_then(Value::as_str) == Some(public.to_text().as_str())
+    } else {
+        let signature = URL_SAFE_NO_PAD.decode(entry.get("sig")?.as_str()?).ok()?;
+        public.verify(&computed, &signature)
+    };
+    valid.then_some((seq, hash))
 }
 
 /// ISO 8601 UTC with milliseconds: `2026-12-10T09:14:03.112Z`.

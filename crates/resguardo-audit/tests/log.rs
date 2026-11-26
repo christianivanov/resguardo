@@ -299,3 +299,19 @@ fn key_material_never_shows_in_debug_output() {
     let debug = format!("{key:?}");
     assert!(!debug.contains("pkcs8") && debug.len() < 80, "{debug}");
 }
+
+#[test]
+fn a_rotation_whose_new_key_is_not_in_use_stops_startup() {
+    // A crash between writing the rotation and installing the new key files would leave
+    // the old key in use: entries signed with it would no longer verify.
+    let path = dir().join("audit.jsonl");
+    let old = SigningKey::generate().unwrap();
+    let log = AuditLog::open(&path, old.clone(), false).unwrap();
+    three_requests(&log);
+    log.rotate_key(SigningKey::generate().unwrap()).unwrap();
+    drop(log);
+    assert!(matches!(
+        AuditLog::open(&path, old, false),
+        Err(AuditError::LastEntry(_))
+    ));
+}

@@ -11,6 +11,7 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+resguardo-audit.workspace = true
 resguardo-core.workspace = true
 resguardo-egress.workspace = true
 resguardo-policy.workspace = true
