@@ -2,11 +2,74 @@
 //! findings of one class become one, and the most confident one gives it its rule.
 
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::ops::Range;
 
 use resguardo_core::DataClass;
 
 use crate::decode::Layer;
+use crate::scanner::Detection;
+
+/// Classes whose overlaps are coincidences of digits inside a longer value (ADR 0010).
+const NUMBER_CLASSES: [DataClass; 4] = [
+    DataClass::Iban,
+    DataClass::EsId,
+    DataClass::Card,
+    DataClass::Phone,
+];
+
+/// Among overlapping detections of `iban`, `es_id`, `card` and `phone` in one text, keeps
+/// only the most confident: a phone inside a card, or a card inside an IBAN, is a
+/// coincidence of digits (ADR 0010). Other classes are left alone.
+pub(crate) fn keep_most_confident_numbers(detections: &mut Vec<Detection>) {
+    let mut order: Vec<usize> = (0..detections.len())
+        .filter(|&i| {
+            detections
+                .get(i)
+                .is_some_and(|d| NUMBER_CLASSES.contains(&d.class))
+        })
+        .collect();
+    if order.len() < 2 {
+        return;
+    }
+    // Most confident first; then by position and rule, so the result is deterministic.
+    order.sort_by_key(|&i| {
+        detections.get(i).map(|d| {
+            (
+                std::cmp::Reverse(d.confidence),
+                d.span.start,
+                d.span.end,
+                d.rule,
+            )
+        })
+    });
+    // Kept spans, disjoint, by start. The one with the largest start before a span's end is
+    // the only one that can overlap it.
+    let mut kept: BTreeMap<usize, usize> = BTreeMap::new();
+    let mut keep = vec![true; detections.len()];
+    for i in order {
+        let Some(span) = detections.get(i).map(|d| d.span.clone()) else {
+            continue;
+        };
+        let overlaps = kept
+            .range(..span.end)
+            .next_back()
+            .is_some_and(|(_, &end)| end > span.start);
+        if overlaps {
+            if let Some(flag) = keep.get_mut(i) {
+                *flag = false;
+            }
+        } else {
+            kept.insert(span.start, span.end);
+        }
+    }
+    let mut index = 0;
+    detections.retain(|_| {
+        let retained = keep.get(index).copied().unwrap_or(true);
+        index += 1;
+        retained
+    });
+}
 
 /// A finding before it is tied to a [`resguardo_core::ScanText`]. The span is already in the
 /// original text.
@@ -103,6 +166,64 @@ fn outranks(a: &RawFinding, b: &RawFinding) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn detection(class: DataClass, span: Range<usize>, confidence: u8) -> Detection {
+        Detection {
+            class,
+            span,
+            rule: "test.rule",
+            confidence,
+        }
+    }
+
+    #[test]
+    fn the_most_confident_number_wins_and_its_neighbours_stay() {
+        let mut detections = vec![
+            detection(DataClass::Phone, 0..11, 60),
+            detection(DataClass::Card, 0..21, 85),
+            detection(DataClass::Iban, 30..59, 95),
+            detection(DataClass::Card, 35..54, 85),
+            detection(DataClass::Phone, 60..69, 60),
+        ];
+        keep_most_confident_numbers(&mut detections);
+        let kept: Vec<_> = detections
+            .iter()
+            .map(|d| (d.class, d.span.clone()))
+            .collect();
+        assert_eq!(
+            kept,
+            vec![
+                (DataClass::Card, 0..21),
+                (DataClass::Iban, 30..59),
+                (DataClass::Phone, 60..69),
+            ]
+        );
+    }
+
+    #[test]
+    fn other_classes_are_never_dropped_by_numbers() {
+        let mut detections = vec![
+            detection(DataClass::Email, 0..21, 80),
+            detection(DataClass::EsId, 0..9, 90),
+            detection(DataClass::Secret, 5..30, 90),
+        ];
+        keep_most_confident_numbers(&mut detections);
+        assert_eq!(detections.len(), 3);
+    }
+
+    #[test]
+    fn a_chain_of_overlaps_keeps_the_strongest_and_what_it_does_not_touch() {
+        // The card overlaps both phones; the phones do not overlap each other.
+        let mut detections = vec![
+            detection(DataClass::Phone, 0..9, 60),
+            detection(DataClass::Card, 5..25, 85),
+            detection(DataClass::Phone, 20..29, 60),
+            detection(DataClass::Phone, 30..39, 60),
+        ];
+        keep_most_confident_numbers(&mut detections);
+        let kept: Vec<_> = detections.iter().map(|d| d.span.clone()).collect();
+        assert_eq!(kept, vec![5..25, 30..39]);
+    }
 
     fn finding(
         class: DataClass,

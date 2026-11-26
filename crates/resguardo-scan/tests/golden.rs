@@ -126,6 +126,36 @@ fn g1_cif_of_a_public_body_needs_a_letter() {
     assert_eq!(scan("Q28260008"), ScanReport::default());
 }
 
+// --- G.1, cards and phones -------------------------------------------------------------
+
+#[test]
+fn g1_card_that_passes_luhn_is_a_card() {
+    assert_eq!(
+        only_finding("4111 1111 1111 1111"),
+        (DataClass::Card, "card.luhn".to_owned(), 0..19)
+    );
+    assert_eq!(scan("4111 1111 1111 1111").findings[0].confidence, 85);
+}
+
+#[test]
+fn g1_card_that_fails_luhn_is_not_a_finding() {
+    assert_eq!(scan("4111111111111112"), ScanReport::default());
+}
+
+#[test]
+fn g1_spanish_mobile_with_prefix_is_a_phone() {
+    assert_eq!(
+        only_finding("+34 612 345 678"),
+        (DataClass::Phone, "phone.es".to_owned(), 0..15)
+    );
+    assert_eq!(scan("+34 612 345 678").findings[0].confidence, 60);
+}
+
+#[test]
+fn g1_number_starting_with_5_is_not_a_phone() {
+    assert_eq!(scan("512 345 678"), ScanReport::default());
+}
+
 // --- G.2 -----------------------------------------------------------------------------
 
 #[test]

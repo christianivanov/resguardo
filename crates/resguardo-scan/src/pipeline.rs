@@ -6,11 +6,15 @@ use std::ops::Range;
 use resguardo_core::config::ScanConfig;
 use resguardo_core::{DataClass, Finding, ScanFlag, ScanLimit, ScanReport, ScanText};
 
-use crate::aggregate::{RawFinding, drop_candidates_overlapping_secrets, merge_overlapping};
+use crate::aggregate::{
+    RawFinding, drop_candidates_overlapping_secrets, keep_most_confident_numbers, merge_overlapping,
+};
+use crate::card::CardScanner;
 use crate::decode::{Layer, decode, find_candidates};
 use crate::entropy::EntropyScanner;
 use crate::es_id::EsIdScanner;
 use crate::normalize::normalize;
+use crate::phone::PhoneScanner;
 use crate::scanner::Scanner;
 use crate::secrets::SecretScanner;
 
@@ -79,6 +83,8 @@ impl Pipeline {
             scanners: vec![
                 Box::new(SecretScanner::new()?),
                 Box::new(EsIdScanner),
+                Box::new(CardScanner),
+                Box::new(PhoneScanner),
                 Box::new(EntropyScanner {
                     threshold: config.entropy_threshold,
                     min_len: config.entropy_min_len,
@@ -177,6 +183,9 @@ impl Pipeline {
         for scanner in &self.scanners {
             scanner.scan(&normalized.text, &mut detections)?;
         }
+        // Within this layer, before spans are mapped: two values decoded from one fragment
+        // share its outer span, and must not be taken for overlapping (ADR 0010).
+        keep_most_confident_numbers(&mut detections);
         for detection in detections {
             collected.findings.push(RawFinding {
                 class: detection.class,

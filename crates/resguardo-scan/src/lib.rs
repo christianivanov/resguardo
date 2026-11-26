@@ -7,10 +7,12 @@
 #![forbid(unsafe_code)]
 
 mod aggregate;
+mod card;
 mod decode;
 mod entropy;
 mod es_id;
 mod normalize;
+mod phone;
 mod pipeline;
 mod scanner;
 mod secrets;
