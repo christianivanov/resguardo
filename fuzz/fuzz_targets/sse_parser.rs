@@ -48,6 +48,9 @@ fuzz_target!(|data: &[u8]| {
     }
     if let Some(events) = whole {
         let raw: Vec<u8> = events.iter().flat_map(|e| e.raw.iter().copied()).collect();
-        assert!(input.starts_with(&raw), "raw bytes are a prefix of the input");
+        assert!(
+            input.starts_with(&raw),
+            "raw bytes are a prefix of the input"
+        );
     }
 });

@@ -12,7 +12,13 @@ use resguardo_proto::{MarkdownFilter, ResponseControls};
 
 /// Whether the byte at `pos` follows an odd number of backslashes.
 fn escaped(bytes: &[u8], pos: usize) -> bool {
-    bytes[..pos].iter().rev().take_while(|&&b| b == b'\\').count() % 2 == 1
+    bytes[..pos]
+        .iter()
+        .rev()
+        .take_while(|&&b| b == b'\\')
+        .count()
+        % 2
+        == 1
 }
 
 /// The index of the byte that closes the bracket or parenthesis opened at `open`.
@@ -43,7 +49,10 @@ fn is_remote(destination: &str) -> bool {
     };
     // The WHATWG parser's first steps: tabs and newlines removed, controls and spaces
     // trimmed.
-    let cleaned: String = token.chars().filter(|c| !matches!(c, '\t' | '\n' | '\r')).collect();
+    let cleaned: String = token
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect();
     let token = cleaned.trim_matches(|c: char| c <= ' ');
     let relative = ["//", "\\\\", "/\\", "\\/"]
         .iter()
@@ -61,7 +70,11 @@ fn remote_images(text: &str) -> Vec<String> {
     let bytes = text.as_bytes();
     let mut found = Vec::new();
     for open in 1..bytes.len() {
-        if bytes[open] != b'[' || bytes[open - 1] != b'!' || escaped(bytes, open - 1) || escaped(bytes, open) {
+        if bytes[open] != b'['
+            || bytes[open - 1] != b'!'
+            || escaped(bytes, open - 1)
+            || escaped(bytes, open)
+        {
             continue;
         }
         let Some(close) = closing(bytes, open, b'[', b']') else {
