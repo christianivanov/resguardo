@@ -1,4 +1,4 @@
-//! Golden cases of the design document: the secret rows of Annex G.1 and all of Annex G.2.
+//! Golden cases of the design document: Annex G.1 and Annex G.2.
 //! Expected values were computed outside the code (ADR 0008 records the interpretation of
 //! G.2's last row). Key-shaped values are split with `concat!` so that secret scanners
 //! reading this file do not mistake the fake keys for real ones.
@@ -74,6 +74,56 @@ fn g1_word_with_4_66_bits_per_character_is_a_secret_candidate() {
 #[test]
 fn g1_password_below_the_entropy_threshold_is_not_a_finding() {
     assert_eq!(scan("SuperSecretPassword2026!!"), ScanReport::default());
+}
+
+// --- G.1, Spanish ids -----------------------------------------------------------------
+
+/// The only finding of `text`, as (class, rule, span).
+fn only_finding(text: &str) -> (DataClass, String, Range<usize>) {
+    let report = scan(text);
+    assert_eq!(report.findings.len(), 1, "{:?}", report.findings);
+    let f = &report.findings[0];
+    (f.class, f.rule.clone(), f.span.clone())
+}
+
+fn es_id(rule: &str, span: Range<usize>) -> (DataClass, String, Range<usize>) {
+    (DataClass::EsId, rule.to_owned(), span)
+}
+
+#[test]
+fn g1_dni_with_its_letter_is_an_es_id() {
+    // 12345678 mod 23 = 14, letter Z.
+    assert_eq!(only_finding("12345678Z"), es_id("es_id.dni", 0..9));
+    assert_eq!(scan("12345678Z").findings[0].confidence, 90);
+}
+
+#[test]
+fn g1_dni_with_the_wrong_letter_is_not_a_finding() {
+    assert_eq!(scan("12345678A"), ScanReport::default());
+}
+
+#[test]
+fn g1_nie_with_x_and_y_are_es_ids() {
+    // 01234567 mod 23 = 19, letter L; 17654321 mod 23 = 4, letter G.
+    assert_eq!(only_finding("X1234567L"), es_id("es_id.nie", 0..9));
+    assert_eq!(only_finding("Y7654321G"), es_id("es_id.nie", 0..9));
+}
+
+#[test]
+fn g1_cif_with_a_control_digit_is_an_es_id() {
+    assert_eq!(only_finding("B12345674"), es_id("es_id.cif", 0..9));
+}
+
+#[test]
+fn g1_cif_starting_with_b_needs_a_digit_not_a_letter() {
+    assert_eq!(scan("B1234567D"), ScanReport::default());
+}
+
+#[test]
+fn g1_cif_of_a_public_body_needs_a_letter() {
+    assert_eq!(only_finding("Q2826000H"), es_id("es_id.cif", 0..9));
+    // Q demands a letter, so the same control as a digit (8) is not accepted.
+    assert_eq!(scan("Q28260008"), ScanReport::default());
 }
 
 // --- G.2 -----------------------------------------------------------------------------

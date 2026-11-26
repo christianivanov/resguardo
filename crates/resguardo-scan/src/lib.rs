@@ -9,10 +9,12 @@
 mod aggregate;
 mod decode;
 mod entropy;
+mod es_id;
 mod normalize;
 mod pipeline;
 mod scanner;
 mod secrets;
+mod windows;
 
 pub use pipeline::{Pipeline, ScanError};
 

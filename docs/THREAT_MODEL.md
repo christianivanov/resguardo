@@ -102,6 +102,7 @@ This is the biggest difference from the target architecture, where a compromised
 - Slow clients that send headers very slowly: there is no header read timeout yet.
 - Images, audio and PDFs **inside** a chat request (base64 or `data:` URLs) are forwarded without scanning; their count is recorded. Text hidden in them is not detected (ADR 0007).
 - Numbers in the JSON body are not scanned: a card number sent as a JSON number is not detected.
+- Detector gaps listed in ADR 0008 and ADR 0010, for example: values glued to other letters or digits (`DNI12345678Z`); Base64 fragments shorter than 24 characters, such as a bare id; Base64 split across lines; partial URL-encoding; addresses written as `name [at] example [dot] com`.
 - Restoring redacted values in responses.
 - Anything once the host is compromised.
 

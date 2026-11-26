@@ -9,6 +9,7 @@ use resguardo_core::{DataClass, Finding, ScanFlag, ScanLimit, ScanReport, ScanTe
 use crate::aggregate::{RawFinding, drop_candidates_overlapping_secrets, merge_overlapping};
 use crate::decode::{Layer, decode, find_candidates};
 use crate::entropy::EntropyScanner;
+use crate::es_id::EsIdScanner;
 use crate::normalize::normalize;
 use crate::scanner::Scanner;
 use crate::secrets::SecretScanner;
@@ -77,6 +78,7 @@ impl Pipeline {
             max_derived_bytes: config.max_derived_bytes,
             scanners: vec![
                 Box::new(SecretScanner::new()?),
+                Box::new(EsIdScanner),
                 Box::new(EntropyScanner {
                     threshold: config.entropy_threshold,
                     min_len: config.entropy_min_len,
