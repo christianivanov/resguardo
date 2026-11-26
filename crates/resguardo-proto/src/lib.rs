@@ -11,9 +11,14 @@ pub use json::{ProtoError, parse_strict};
 pub mod redact;
 pub mod request;
 pub mod sse;
+pub mod stream;
 
 pub use markdown::{MarkdownFilter, ResponseControls};
-pub use redact::{RedactError, redact};
+pub use redact::{RedactError, redact, replace_strings};
 pub use sse::{SseError, SseEvent, SseParser};
+pub use stream::{
+    Block, ChoicePart, ResponseText, StreamError, StreamEvent, TextKind, analyze_event,
+    flush_event, response_texts, rewrite_event,
+};
 
 pub use request::{ApiFormat, ParsedRequest, check_query, parse_request, route};

@@ -41,7 +41,21 @@ pub fn redact(
         return Ok(body.to_vec());
     }
     let replacements = redacted_texts(&parsed.texts, spans)?;
-    let located = locate(body, &replacements)?;
+    replace_strings(body, &parsed.raw, &replacements)
+}
+
+/// Returns `body` with the string at each pointer replaced by its new text, and every other
+/// byte unchanged. `raw` must be `body` parsed strictly. The result is parsed again and
+/// compared with `raw` plus the replacements before it is returned.
+pub fn replace_strings(
+    body: &[u8],
+    raw: &Value,
+    replacements: &BTreeMap<String, String>,
+) -> Result<Vec<u8>, RedactError> {
+    if replacements.is_empty() {
+        return Ok(body.to_vec());
+    }
+    let located = locate(body, replacements)?;
     if located.len() != replacements.len() {
         return Err(RedactError::Rewrite);
     }
@@ -58,8 +72,8 @@ pub fn redact(
     out.extend_from_slice(body.get(copied..).ok_or(RedactError::Rewrite)?);
 
     // The locator is a second reader of the JSON: check its work with the strict parser.
-    let mut expected = parsed.raw.clone();
-    for (pointer, text) in &replacements {
+    let mut expected = raw.clone();
+    for (pointer, text) in replacements {
         *expected.pointer_mut(pointer).ok_or(RedactError::Mismatch)? = Value::String(text.clone());
     }
     if parse_strict(&out).map_err(|_| RedactError::Mismatch)? != expected {
