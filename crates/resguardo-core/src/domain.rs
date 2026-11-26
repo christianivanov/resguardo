@@ -258,6 +258,51 @@ pub struct Finding {
     pub via: Vec<String>,
 }
 
+/// A scanning limit that stopped decoding (ADR 0008). Not a finding: no data class is known,
+/// only that some content was not fully inspected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScanLimit {
+    /// A fragment at `max_decode_depth` would decode to text that was not scanned.
+    DecodeDepth,
+    /// A decoded text was longer than `max_derived_bytes`; only its first part was scanned.
+    DerivedBytes,
+}
+
+impl ScanLimit {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ScanLimit::DecodeDepth => "decode_depth",
+            ScanLimit::DerivedBytes => "derived_bytes",
+        }
+    }
+}
+
+impl fmt::Display for ScanLimit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Records that a [`ScanLimit`] was reached. Like a [`Finding`], it never carries content.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScanFlag {
+    pub limit: ScanLimit,
+    /// Which [`ScanText`] it belongs to.
+    pub pointer: String,
+    /// Byte range in the ORIGINAL text: the whole outermost encoded fragment.
+    pub span: Range<usize>,
+    /// Layers crossed, ending with the one that was not fully decoded.
+    pub via: Vec<String>,
+}
+
+/// Everything the scanner found in a request, for policy to decide on.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ScanReport {
+    pub findings: Vec<Finding>,
+    pub flags: Vec<ScanFlag>,
+}
+
 /// Outcome of policy for one request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
@@ -418,5 +463,11 @@ mod tests {
         }
         let mode: StreamMode = serde_json::from_str("\"passthrough_abort\"").unwrap();
         assert_eq!(mode, StreamMode::PassthroughAbort);
+        for limit in [ScanLimit::DecodeDepth, ScanLimit::DerivedBytes] {
+            assert_eq!(
+                serde_json::to_string(&limit).unwrap(),
+                format!("\"{}\"", limit.as_str())
+            );
+        }
     }
 }
