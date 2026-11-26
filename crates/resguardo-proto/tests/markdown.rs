@@ -267,3 +267,21 @@ fn destinations_are_cleaned_like_a_browser_before_they_are_judged() {
     assert_eq!(apply("[x](\u{1}//attacker.test/)"), "x");
     assert_eq!(apply("[x](<\t//attacker.test/>)"), "x");
 }
+
+#[test]
+fn a_replacement_cannot_put_a_parenthesis_right_after_released_brackets() {
+    // Found by the fuzzer: `![ ]` was not an image because `[` followed it; once the link
+    // after it was removed, `(` followed it, and `![ ](...)` became an image.
+    assert_eq!(
+        apply_split_everywhere("![ ][](https://attacker.test/)(https://attacker.test/x.png)"),
+        r"![ ]\(https://attacker.test/x.png)"
+    );
+    assert_eq!(
+        apply_split_everywhere(
+            "![x](https://a.test/)[](https://attacker.test/)(https://attacker.test/)"
+        ),
+        r"[image removed]\(https://attacker.test/)"
+    );
+    // Text that was not changed keeps its parentheses.
+    assert_eq!(apply("a [1] (b) [c](#d)"), "a [1] (b) [c](#d)");
+}

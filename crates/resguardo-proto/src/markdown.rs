@@ -89,17 +89,20 @@ impl ResponseControls {
     pub fn push(&self, state: &mut MarkdownState, text: &str) -> String {
         let mut buf = std::mem::take(&mut state.held);
         buf.push_str(text);
-        let (out, held) = self.process(&buf, false, state.after_bang);
+        let (out, held, after_close) =
+            self.process(&buf, false, state.after_bang, state.after_close);
         state.held = held;
         state.after_bang = ends_in_bang(&out, state.after_bang);
+        state.after_close = after_close;
         out
     }
 
     /// The text ended: resolves and returns whatever `state` held.
     pub fn finish(&self, state: &mut MarkdownState) -> String {
         let buf = std::mem::take(&mut state.held);
-        let (out, _) = self.process(&buf, true, state.after_bang);
+        let (out, _, after_close) = self.process(&buf, true, state.after_bang, state.after_close);
         state.after_bang = ends_in_bang(&out, state.after_bang);
+        state.after_close = after_close;
         out
     }
 
@@ -125,72 +128,86 @@ impl ResponseControls {
     }
 
     /// Returns what can be released and what must be held. With `at_end`, nothing is held.
-    /// `bang_before`: the text released before `buf` ends in a plain `!`.
-    fn process(&self, buf: &str, at_end: bool, bang_before: bool) -> (String, String) {
+    /// `bang_before`: the text released before `buf` ends in a plain `!`. `close_before`: it
+    /// ends in a `]` the controls wrote. Returns the released text, the held text and the
+    /// new `close_before`.
+    fn process(
+        &self,
+        buf: &str,
+        at_end: bool,
+        bang_before: bool,
+        close_before: bool,
+    ) -> (String, String, bool) {
         let bytes = buf.as_bytes();
         let mut out = String::with_capacity(buf.len());
+        let mut close = close_before;
         let mut i = 0;
         loop {
             let Some(open) = next_open(bytes, i) else {
-                out.push_str(slice(buf, i, bytes.len()));
+                append(&mut out, &mut close, false, slice(buf, i, bytes.len()));
                 if at_end {
-                    return (out, String::new());
+                    return (out, String::new(), close);
                 }
                 // What comes next is read together with the end of this text.
-                return hold(out, "");
+                return with_close(hold(out, ""), close);
             };
             let image = open > 0 && bytes.get(open - 1) == Some(&b'!') && !escaped(bytes, open - 1);
             let start = if image { open - 1 } else { open };
-            out.push_str(slice(buf, i, start));
+            append(&mut out, &mut close, false, slice(buf, i, start));
             let removes_image = image && self.strip_remote_images;
             match self.parse(buf, start, open, image) {
                 Parsed::Complete { end, replacement } => {
-                    out.push_str(&replacement);
+                    append(&mut out, &mut close, true, &replacement);
                     i = end;
                 }
                 Parsed::RemovedImage { end } => {
                     match placeholder(ends_in_bang(&out, bang_before), bytes, end, at_end) {
                         Some(text) => {
-                            out.push_str(text);
+                            append(&mut out, &mut close, true, text);
                             i = end;
                         }
-                        None => return hold(out, slice(buf, start, bytes.len())),
+                        None => {
+                            return with_close(hold(out, slice(buf, start, bytes.len())), close);
+                        }
                     }
                 }
                 // The brackets stay as one unit around their controlled content. Changing the
                 // content one construct at a time could make another `]` close them, and a
                 // new link or image appear (found by the fuzzer). The content has balanced
                 // brackets, and so do its replacements, so the same `]` still closes them.
-                Parsed::NotAConstruct { close } => {
-                    out.push_str(slice(buf, start, open + 1));
-                    out.push_str(&self.contained(slice(buf, open + 1, close)));
-                    out.push(']');
-                    i = close + 1;
+                Parsed::NotAConstruct { close: bracket } => {
+                    append(&mut out, &mut close, false, slice(buf, start, open + 1));
+                    let content = self.contained(slice(buf, open + 1, bracket));
+                    append(&mut out, &mut close, false, &content);
+                    append(&mut out, &mut close, true, "]");
+                    i = bracket + 1;
                 }
                 Parsed::Incomplete if !at_end => {
-                    return hold(out, slice(buf, start, bytes.len()));
+                    return with_close(hold(out, slice(buf, start, bytes.len())), close);
                 }
                 // An image that never closes is removed, so a long URL cannot get through.
                 Parsed::Incomplete if removes_image => {
                     let text =
                         placeholder(ends_in_bang(&out, bang_before), bytes, bytes.len(), true)
                             .unwrap_or(IMAGE_REMOVED);
-                    out.push_str(text);
+                    append(&mut out, &mut close, true, text);
                     i = bytes.len();
                 }
                 Parsed::Overflow if removes_image => {
                     let end = limit_end(buf, start);
                     match placeholder(ends_in_bang(&out, bang_before), bytes, end, at_end) {
                         Some(text) => {
-                            out.push_str(text);
+                            append(&mut out, &mut close, true, text);
                             i = end;
                         }
-                        None => return hold(out, slice(buf, start, bytes.len())),
+                        None => {
+                            return with_close(hold(out, slice(buf, start, bytes.len())), close);
+                        }
                     }
                 }
                 // Anything else is released as text, and scanning goes on after its `[`.
                 Parsed::Incomplete | Parsed::Overflow => {
-                    out.push_str(slice(buf, start, open + 1));
+                    append(&mut out, &mut close, false, slice(buf, start, open + 1));
                     i = open + 1;
                 }
             }
@@ -317,6 +334,27 @@ fn hold(mut out: String, held: &str) -> (String, String) {
     (out, kept)
 }
 
+/// Appends `text`. `close` says whether the output ends in a `]` the controls wrote (the
+/// end of a bracket unit or of the placeholder). A `(` right after such a `]` is escaped:
+/// a replacement can put the two next to each other, and `](` would turn those brackets
+/// into a link or an image (found by the fuzzer). A `]` from unchanged text keeps what
+/// followed it in the input, so it never needs this.
+fn append(out: &mut String, close: &mut bool, ours: bool, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    if *close && text.starts_with('(') {
+        out.push('\\');
+    }
+    out.push_str(text);
+    *close = ours && out.ends_with(']') && !escaped(out.as_bytes(), out.len() - 1);
+}
+
+/// Adds the `close` state to what [`hold`] returns.
+fn with_close((out, held): (String, String), close: bool) -> (String, String, bool) {
+    (out, held, close)
+}
+
 /// Whether the released text, `out` after whatever was released before it, ends in a plain
 /// `!`. An empty `out` leaves the earlier answer.
 fn ends_in_bang(out: &str, before: bool) -> bool {
@@ -393,6 +431,7 @@ fn escape_link_text(text: &str) -> String {
 pub struct MarkdownState {
     held: String,
     after_bang: bool,
+    after_close: bool,
 }
 
 impl MarkdownState {
