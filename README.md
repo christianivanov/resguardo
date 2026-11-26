@@ -94,7 +94,7 @@ One command starts a mock provider and Resguardo, then calls them with the offic
 | M1 | Proxy: both APIs, virtual keys, limits, egress with post-quantum TLS | ✅ |
 | M2 | Detectors: secrets, invisible text, de-obfuscation, `resguardo scan` | ✅ |
 | M3 | Spanish ids, IBAN, cards, phones and email; policy and redaction | ✅ |
-| M4 | Streaming and response controls | ⏳ |
+| M4 | Streaming, response scanning, image and link controls, fuzzing | ✅ |
 | M5 | Signed audit log and `resguardo verify-log` | ⏳ |
 | M6 | Accuracy corpus, benchmark, exfiltration lab, v0.1.0 | ⏳ February 2027 |
 
@@ -107,6 +107,7 @@ Being honest about limits is part of the design. Resguardo does not detect promp
 - [Getting started](docs/GETTING_STARTED.md): the demo, a step-by-step setup, SDK usage and error codes
 - [Architecture and security](docs/ARCHITECTURE.md): crates, request path and the controls in code today
 - [Threat model](docs/THREAT_MODEL.md) and [architecture decisions](docs/adr/)
+- [Decisions to review](docs/REVIEW.md): taken during implementation, pending the maintainer's review
 - [Running Claude Code through Resguardo](docs/research/claude-code-gateway.md)
 
 ## Contributing
