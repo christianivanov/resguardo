@@ -524,3 +524,128 @@ fn run_refuses_real_providers_until_scanning_and_audit_exist() {
     let error = App::from_config(&config).unwrap_err().to_string();
     assert!(error.contains("only accepts local upstreams"), "{error}");
 }
+
+// --- Scanning, policy and redaction (M3.3) -----------------------------------------------
+
+/// Fake key from the AWS documentation, split so that secret scanners reading this file do
+/// not mistake it for a real one.
+const AWS_EXAMPLE_KEY: &str = concat!("AKIA", "IOSFODNN7EXAMPLE");
+
+fn chat_with(content: &str) -> String {
+    serde_json::json!({
+        "model": "gpt-4.1-mini",
+        "messages": [{"role": "user", "content": content}],
+    })
+    .to_string()
+}
+
+#[tokio::test]
+async fn g3_a_dni_is_redacted_before_it_leaves() {
+    let h = harness().await;
+    let body = chat_with("Mi DNI es 12345678Z");
+    let reply = h.openai(&h.keys.bot, &body).await;
+    assert_eq!(reply.status, 200);
+    assert_eq!(reply.header("x-resguardo-decision"), "redact");
+    let sent = &h.mock.requests()[0];
+    assert_eq!(
+        sent.body,
+        body.replace("12345678Z", "[REDACTED:es_id:1]").as_bytes()
+    );
+    assert_eq!(
+        reply.json()["choices"][0]["message"]["content"],
+        "echo: Mi DNI es [REDACTED:es_id:1]"
+    );
+}
+
+#[tokio::test]
+async fn g3_two_different_dnis_are_numbered() {
+    let h = harness().await;
+    let reply = h
+        .openai(&h.keys.bot, &chat_with("12345678Z y 87654321X"))
+        .await;
+    assert_eq!(reply.status, 200);
+    let sent = String::from_utf8(h.mock.requests()[0].body.clone()).unwrap();
+    assert!(
+        sent.contains("[REDACTED:es_id:1] y [REDACTED:es_id:2]"),
+        "{sent}"
+    );
+}
+
+#[tokio::test]
+async fn g3_an_aws_key_is_403_sensitive_data_and_nothing_leaves() {
+    let h = harness().await;
+    let content = format!("mi clave es {AWS_EXAMPLE_KEY}");
+
+    let openai = h.openai(&h.keys.bot, &chat_with(&content)).await;
+    assert_eq!(openai.status, 403);
+    assert_eq!(openai.code(), "SENSITIVE_DATA");
+    assert_eq!(openai.json()["error"]["type"], "resguardo_policy_violation");
+    assert_eq!(openai.header("x-resguardo-decision"), "block");
+    let message = openai.json()["error"]["message"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(message.contains("'secret'"), "{message}");
+
+    let anthropic_body = MESSAGES.replace("hola", &content);
+    let anthropic = h.anthropic(&h.keys.bot, &anthropic_body).await;
+    assert_eq!(anthropic.status, 403);
+    assert_eq!(anthropic.json()["error"]["type"], "permission_error");
+    assert_eq!(anthropic.json()["error"]["code"], "SENSITIVE_DATA");
+
+    for reply in [&openai, &anthropic] {
+        assert!(!String::from_utf8_lossy(&reply.body).contains("AKIA"));
+    }
+    assert!(h.mock.requests().is_empty(), "nothing left");
+}
+
+#[tokio::test]
+async fn a_secret_encoded_three_times_is_blocked_without_a_class() {
+    let h = harness().await;
+    // Three Base64 layers of a GitHub token (G.2): the token is never seen, and
+    // decode_depth blocks by default (ADR 0012).
+    let encoded = concat!(
+        "V2pKb2QxZ3dSa05STUZKR1VtdGtTVk5WY0V4VVJURlBWREZDVWxWc1RsVldWbHBZ",
+        "VjBac1lWbFhTbXBhUjFadFdqSm9jR0ZuUFQwPQ=="
+    );
+    let reply = h.openai(&h.keys.bot, &chat_with(encoded)).await;
+    assert_eq!(reply.status, 403);
+    assert_eq!(reply.code(), "SENSITIVE_DATA");
+    let message = reply.json()["error"]["message"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        message.contains("could not be fully inspected"),
+        "{message}"
+    );
+    assert!(h.mock.requests().is_empty());
+}
+
+#[tokio::test]
+async fn a_flagged_finding_is_forwarded_byte_for_byte() {
+    let h = harness().await;
+    // A high-entropy word is a secret_candidate, whose action only records it.
+    let body = chat_with(concat!(
+        "token wJalrXUtnFEMI/K7MDENG/",
+        "bPxRfiCYEXAMPLEKEY"
+    ));
+    let reply = h.openai(&h.keys.bot, &body).await;
+    assert_eq!(reply.status, 200);
+    assert_eq!(reply.header("x-resguardo-decision"), "allow");
+    assert_eq!(h.mock.requests()[0].body, body.as_bytes());
+}
+
+#[tokio::test]
+async fn texts_outside_the_messages_are_redacted_too() {
+    let h = harness().await;
+    let body = r#"{"model":"claude-sonnet-5-5","max_tokens":10,"system":"Cliente: ana@example.es","messages":[{"role":"user","content":"hola"}]}"#;
+    let reply = h.anthropic(&h.keys.bot, body).await;
+    assert_eq!(reply.status, 200);
+    assert_eq!(reply.header("x-resguardo-decision"), "redact");
+    assert_eq!(
+        h.mock.requests()[0].body,
+        body.replace("ana@example.es", "[REDACTED:email:1]")
+            .as_bytes()
+    );
+}

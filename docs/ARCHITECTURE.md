@@ -29,8 +29,9 @@ Each step fails closed: any error ends the request with an error response, and n
 5. **Body.** Read up to the key's size limit, within the request timeout.
 6. **Strict parsing.** Duplicate keys, invalid UTF-8, unpaired surrogates and trailing data are rejected; every string in the body is extracted with its JSON Pointer ([ADR 0007](adr/0007-strict-request-parsing.md)).
 7. **Model.** Must be on the key's list; for Chat Completions the list also decides between `openai` and `openai_compatible` ([ADR 0005](adr/0005-openai-compatible-upstream.md)).
-8. **Scan, policy, receipt.** *M2 to M5.* The signed decision entry is written before anything leaves.
-9. **Egress.** To the configured upstream only, with the real credential.
+8. **Scan, policy and redaction.** Every text is scanned on a blocking thread, policy takes one decision ([ADR 0012](adr/0012-policy-decision.md)), and a block answers `403 SENSITIVE_DATA` with the class, never the value. Redaction rewrites only the strings that hold a redacted value, and the result is checked against the strict parser before it leaves ([ADR 0013](adr/0013-redaction.md)). Any scanning or redaction error is `500 SCAN_ERROR`, and nothing is sent.
+9. **Receipt.** *M5.* The signed decision entry is written before anything leaves.
+10. **Egress.** To the configured upstream only, with the real credential.
 
 ## Security controls in code today
 
@@ -42,7 +43,7 @@ Each step fails closed: any error ends the request with an error response, and n
 - **Provider credentials.** Read from an environment variable or a file that only its owner can read; anything wider stops startup. Held in memory that is wiped on drop, never printed.
 - **TLS.** `rustls` with `aws-lc-rs`, offering the hybrid post-quantum key exchange X25519MLKEM768 first, with certificates checked by the operating system's verifier. A test guards the key exchange order, and `cargo deny` bans a second crypto provider ([ADR 0006](adr/0006-tls-crypto-provider.md)).
 - **Data minimization.** Findings carry class, position and rule, never the matched value. Error messages never echo request content.
-- **Temporary guard.** Until scanning and the audit log exist, `resguardo run` refuses any upstream that is not local, so nothing can reach a real provider unscanned.
+- **Temporary guard.** Until the audit log exists, `resguardo run` refuses any upstream that is not local, so nothing can reach a real provider without a receipt.
 
 ## Engineering rules
 

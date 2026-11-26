@@ -26,7 +26,7 @@ Every prompt your application sends to a model provider leaves your network. It 
 Resguardo is a single Rust binary that sits between your applications and the OpenAI and Anthropic APIs, or any OpenAI-compatible server (LiteLLM, vLLM, Ollama). Applications keep their official SDKs: change the base URL and the key, nothing else.
 
 > [!WARNING]
-> **Pre-alpha.** The proxy works end to end with the official SDKs against a mock provider. The detectors work on their own (`resguardo scan`), but the proxy does not use them until policy arrives in M3, and the signed audit log is not built yet, so Resguardo refuses real providers for now.
+> **Pre-alpha.** The proxy works end to end with the official SDKs against a mock provider: it scans every request, redacts or blocks what policy says, and forwards the rest byte for byte. The signed audit log is not built yet, so Resguardo refuses real providers for now.
 
 ## Highlights
 
@@ -65,7 +65,7 @@ client.chat.completions.create(
 )
 ```
 
-The provider receives `Mi DNI es [REDACTED:es_id:1]`, and a signed receipt records the decision. *(Redaction arrives in M3.)*
+The provider receives `Mi DNI es [REDACTED:es_id:1]`, and a signed receipt records the decision. *(Receipts arrive in M5.)*
 
 ## Try it
 

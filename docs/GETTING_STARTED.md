@@ -1,6 +1,6 @@
 # Getting started
 
-Resguardo is pre-alpha. Until scanning (M2) and the signed audit log (M5) exist, `resguardo run` only accepts **local** upstreams, so everything below runs against the mock provider in `tools/mock-upstream`. No real API is ever called and no API key is needed.
+Resguardo is pre-alpha. Until the signed audit log (M5) exists, `resguardo run` only accepts **local** upstreams, so everything below runs against the mock provider in `tools/mock-upstream`. No real API is ever called and no API key is needed.
 
 ## Requirements
 
@@ -173,12 +173,14 @@ Resguardo answers in the error shape of the API that was called, so each SDK rai
 | `INVALID_REQUEST` | 400 | Malformed JSON, duplicate keys, unknown query parameters, compressed body, streaming (until M4) |
 | `UNKNOWN_KEY` / `KEY_EXPIRED` | 401 | Missing, unknown, ambiguous or expired virtual key |
 | `MODEL_NOT_ALLOWED` | 403 | Provider or model outside the key's list |
+| `SENSITIVE_DATA` | 403 | A finding whose action is `block` (the message names its class, never the value), or encoded content too deep to inspect |
 | `NOT_FOUND` | 404 | Any route other than `POST /v1/chat/completions` and `POST /v1/messages` |
 | `BODY_TOO_LARGE` | 413 | Body or message count over the key's limit |
 | `RATE_LIMITED` | 429 | Over the key's requests per minute; `retry-after` says when to retry |
+| `SCAN_ERROR` | 500 | Scanning or redaction failed; nothing was sent |
 | `UPSTREAM_REDIRECT` / `UPSTREAM_ERROR` | 502 | The provider redirected, failed or could not be reached |
 
-Errors from the provider itself are passed through unchanged. Every response carries `x-resguardo-request-id` and `x-resguardo-decision`.
+Errors from the provider itself are passed through unchanged. Every response carries `x-resguardo-request-id` and `x-resguardo-decision` (`allow`, `redact` or `block`).
 
 ### Exit codes of the command line
 

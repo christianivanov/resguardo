@@ -1073,6 +1073,7 @@ dependencies = [
  "resguardo-core",
  "resguardo-egress",
  "resguardo-mock-upstream",
+ "resguardo-policy",
  "resguardo-proto",
  "resguardo-scan",
  "serde_json",

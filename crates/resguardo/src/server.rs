@@ -2,12 +2,12 @@
 //!
 //! Order of checks, each one failing closed:
 //! route → virtual key → query → content type and encoding → rate limit → body size →
-//! strict parsing → message count → model allowed → (scanning, policy and receipt: M2–M5)
-//! → egress.
+//! strict parsing → message count → model allowed → scanning → policy → redaction →
+//! (signed receipt: M5) → egress.
 //!
-//! Until scanning (M2) and the signed audit log (M5) exist, [`App::from_config`] refuses any
-//! upstream that is not a local, explicitly insecure one: nothing can reach a real provider
-//! unscanned.
+//! Until the signed audit log (M5) exists, [`App::from_config`] refuses any upstream that
+//! is not a local, explicitly insecure one: nothing can reach a real provider without a
+//! receipt.
 
 use std::future::Future;
 use std::sync::Arc;
@@ -26,9 +26,13 @@ use axum::http::header::{
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::StreamExt;
-use resguardo_core::{BlockCode, Config, KeyRing, OffsetDateTime, Principal, Provider};
+use resguardo_core::{
+    BlockCode, Config, DataClass, Decision, KeyRing, OffsetDateTime, Principal, Provider,
+};
 use resguardo_egress::{Egress, OutboundRequest};
-use resguardo_proto::{ApiFormat, ParsedRequest, check_query, parse_request, route};
+use resguardo_policy::Policy;
+use resguardo_proto::{ApiFormat, ParsedRequest, check_query, parse_request, redact, route};
+use resguardo_scan::Pipeline;
 use serde_json::json;
 use tokio::net::TcpListener;
 
@@ -44,6 +48,8 @@ const X_DECISION: HeaderName = HeaderName::from_static("x-resguardo-decision");
 pub struct App {
     keys: KeyRing,
     limiter: RateLimiter,
+    pipeline: Pipeline,
+    policy: Policy,
     egress: Egress,
     request_timeout: Duration,
 }
@@ -51,20 +57,23 @@ pub struct App {
 impl App {
     /// Loads provider credentials and builds the HTTP client. Any problem stops startup.
     pub fn from_config(config: &Config) -> anyhow::Result<Self> {
-        // Temporary guard, removed when scanning and the audit log exist (M2, M5).
+        // Temporary guard, removed when the audit log exists (M5).
         if let Some(upstream) = config.upstreams.values().find(|u| !u.insecure) {
             bail!(
-                "upstream {} ({}) is not local: until scanning (M2) and the signed audit log (M5) \
-                 exist, `resguardo run` only accepts local upstreams with allow_insecure_upstream \
-                 = true, such as tools/mock-upstream",
+                "upstream {} ({}) is not local: until the signed audit log (M5) exists, \
+                 `resguardo run` only accepts local upstreams with allow_insecure_upstream = true, \
+                 such as tools/mock-upstream",
                 upstream.provider,
                 upstream.base_url
             );
         }
         let egress = Egress::from_config(config).context("setting up egress")?;
+        let pipeline = Pipeline::new(&config.scan).context("setting up scanning")?;
         Ok(Self {
             keys: KeyRing::from_config(config),
             limiter: RateLimiter::new(config.principals.iter().map(|p| &p.principal)),
+            pipeline,
+            policy: Policy::from_config(config),
             egress,
             request_timeout: Duration::from_secs(config.server.request_timeout_secs),
         })
@@ -129,16 +138,16 @@ async fn proxy(State(app): State<Arc<App>>, request: Request) -> Response {
     let request_id = new_request_id();
     let format = route(request.method().as_str(), request.uri().path());
     match handle(&app, format, request).await {
-        Ok(response) => forwarded(response, &request_id),
+        Ok((response, decision)) => forwarded(response, &request_id, decision),
         Err(failure) => error_response(failure, format, &request_id),
     }
 }
 
 async fn handle(
-    app: &App,
+    app: &Arc<App>,
     format: Option<ApiFormat>,
     request: Request,
-) -> Result<resguardo_egress::UpstreamResponse, Failure> {
+) -> Result<(resguardo_egress::UpstreamResponse, &'static str), Failure> {
     let Some(format) = format else {
         return Err(Failure::NotFound);
     };
@@ -187,23 +196,74 @@ async fn handle(
         )
     })?;
 
-    // M2–M5 go here: scan `parsed.texts`, decide, and write the signed decision entry
-    // before anything leaves. Until then `App::from_config` only allows local upstreams.
+    let (decision, body) = inspect(Arc::clone(app), principal.clone(), parsed, bytes).await?;
 
-    app.egress
+    // M5 goes here: write the signed decision entry before anything leaves. Until then
+    // `App::from_config` only allows local upstreams.
+
+    let response = app
+        .egress
         .send(OutboundRequest {
             provider,
             path: format.path(),
             query,
             incoming_headers: headers,
-            body: bytes,
+            body,
         })
         .await
         .map_err(|error| {
             // Operator-facing detail: provider and cause, never content or credentials.
             eprintln!("upstream {provider}: {error}");
             Failure::block(error.block_code(), upstream_message(error.block_code()))
-        })
+        })?;
+    Ok((response, decision))
+}
+
+/// Scans the texts, asks policy and redacts if needed. Returns the decision for the
+/// `x-resguardo-decision` header and the body to send: the original bytes when allowed.
+///
+/// Scanning is CPU work, so it runs on Tokio's blocking pool instead of an async worker,
+/// like handing a heavy task to a separate executor in Java. That needs owned values
+/// (`'static`), hence the `Arc` and the cloned principal.
+async fn inspect(
+    app: Arc<App>,
+    principal: Principal,
+    parsed: ParsedRequest,
+    bytes: Vec<u8>,
+) -> Result<(&'static str, Vec<u8>), Failure> {
+    let scan_failed = || {
+        Failure::block(
+            BlockCode::ScanError,
+            "the request could not be scanned, so it was not sent",
+        )
+    };
+    tokio::task::spawn_blocking(move || {
+        let report = app.pipeline.scan(&parsed.texts).map_err(|error| {
+            // Scan errors name settings or patterns, never content.
+            eprintln!("scanning: {error}");
+            scan_failed()
+        })?;
+        match app.policy.decide(&principal, &report) {
+            Decision::Allow { .. } => Ok(("allow", bytes)),
+            Decision::Redact { spans, .. } => redact(&bytes, &parsed, &spans)
+                .map(|body| ("redact", body))
+                .map_err(|error| {
+                    eprintln!("redaction: {error}");
+                    scan_failed()
+                }),
+            Decision::Block { code, class } => Err(Failure::block(code, blocked_message(class))),
+        }
+    })
+    .await
+    .map_err(|_| scan_failed())?
+}
+
+/// Annex H: the class, never the value.
+fn blocked_message(class: Option<DataClass>) -> String {
+    match class {
+        Some(class) => format!("Request blocked: data class '{class}' is not allowed to leave."),
+        None => "Request blocked: some encoded content could not be fully inspected.".to_owned(),
+    }
 }
 
 /// Accepts the key from `Authorization: Bearer` or `x-api-key`; a header that appears twice
@@ -308,12 +368,16 @@ fn upstream_message(code: BlockCode) -> &'static str {
     }
 }
 
-fn forwarded(upstream: resguardo_egress::UpstreamResponse, request_id: &str) -> Response {
+fn forwarded(
+    upstream: resguardo_egress::UpstreamResponse,
+    request_id: &str,
+    decision: &'static str,
+) -> Response {
     let mut response = Body::from(upstream.body).into_response();
     *response.status_mut() = upstream.status;
     let headers = response.headers_mut();
     headers.extend(upstream.headers);
-    add_resguardo_headers(headers, request_id, "allow");
+    add_resguardo_headers(headers, request_id, decision);
     response
 }
 
