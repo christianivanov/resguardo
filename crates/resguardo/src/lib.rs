@@ -2,5 +2,6 @@
 #![forbid(unsafe_code)]
 
 pub mod rate_limit;
+mod receipt;
 mod response;
 pub mod server;

@@ -1078,6 +1078,7 @@ dependencies = [
  "resguardo-proto",
  "resguardo-scan",
  "serde_json",
+ "sha2",
  "tokio",
  "uuid",
 ]

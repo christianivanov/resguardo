@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+use std::time::Instant;
 
 use resguardo_core::{BlockCode, DataClass, Decision, Principal, StreamMode};
 use resguardo_egress::UpstreamResponse;
@@ -10,8 +11,9 @@ use resguardo_proto::{
     ApiFormat, Block, MarkdownState, SseParser, StreamEvent, TextKind, analyze_event, flush_event,
     parse_strict, replace_strings, response_texts, rewrite_event,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 
+use crate::receipt::{class_counts, micros, outcome_in_background};
 use crate::server::{App, Failure, error_body};
 
 /// Annex H: the class, never the value.
@@ -31,9 +33,9 @@ pub(crate) fn guard_whole(
     principal: &Principal,
     format: ApiFormat,
     mut response: UpstreamResponse,
-) -> Result<UpstreamResponse, Failure> {
+) -> Result<(UpstreamResponse, Value), Failure> {
     if !response.status.is_success() {
-        return Ok(response);
+        return Ok((response, json!({})));
     }
     let unreadable = || {
         Failure::block(
@@ -65,7 +67,7 @@ pub(crate) fn guard_whole(
         eprintln!("response controls: {error}");
         Failure::block(BlockCode::ScanError, "the response could not be rewritten")
     })?;
-    Ok(response)
+    Ok((response, class_counts(&report)))
 }
 
 /// What to send after a chunk of the provider's stream.
@@ -96,6 +98,10 @@ pub(crate) struct StreamGuard {
     held_bytes: usize,
     buffer: bool,
     stopped: bool,
+    /// For the outcome entry.
+    started: Instant,
+    upstream_started: Instant,
+    response_findings: BTreeMap<DataClass, u64>,
 }
 
 impl StreamGuard {
@@ -104,6 +110,8 @@ impl StreamGuard {
         principal: Principal,
         format: ApiFormat,
         request_id: String,
+        started: Instant,
+        upstream_started: Instant,
     ) -> Self {
         let parser = SseParser::new(app.stream.max_event_bytes);
         let buffer = principal.stream_mode == StreamMode::Buffer;
@@ -120,7 +128,33 @@ impl StreamGuard {
             held_bytes: 0,
             buffer,
             stopped: false,
+            started,
+            upstream_started,
+            response_findings: BTreeMap::new(),
         }
+    }
+
+    /// The outcome entry of the stream, written once when it ends.
+    fn record(&self, outcome: &str, status: u16) {
+        let upstream_us = micros(self.upstream_started);
+        let total = micros(self.started);
+        let findings: BTreeMap<String, u64> = self
+            .response_findings
+            .iter()
+            .map(|(class, n)| (class.as_str().to_owned(), *n))
+            .collect();
+        let fields = BTreeMap::from([
+            ("status".to_owned(), json!(status)),
+            ("outcome".to_owned(), json!(outcome)),
+            ("stream".to_owned(), json!(true)),
+            ("upstream_us".to_owned(), json!(upstream_us)),
+            (
+                "overhead_us".to_owned(),
+                json!(total.saturating_sub(upstream_us)),
+            ),
+            ("response_findings".to_owned(), json!(findings)),
+        ]);
+        outcome_in_background(&self.app, &self.request_id, fields);
     }
 
     pub(crate) fn chunk(&mut self, chunk: &[u8]) -> Step {
@@ -168,6 +202,8 @@ impl StreamGuard {
             };
         }
         self.emit(flushed, true, &mut out);
+        self.stopped = true;
+        self.record("completed", 200);
         out
     }
 
@@ -262,6 +298,7 @@ impl StreamGuard {
                 }
                 None => text.text.clone(),
             };
+            let tail_len = window.len() - text.text.len();
             let report = self
                 .app
                 .pipeline
@@ -273,6 +310,9 @@ impl StreamGuard {
                         "the response could not be scanned".to_owned(),
                     )
                 })?;
+            for finding in report.findings.iter().filter(|f| f.span.end > tail_len) {
+                *self.response_findings.entry(finding.class).or_default() += 1;
+            }
             if let Decision::Block { class, .. } = self.app.policy.decide(&self.principal, &report)
             {
                 return Err(self.stop(BlockCode::SensitiveData, blocked_message(class)));
@@ -353,6 +393,13 @@ impl StreamGuard {
     /// Ends the stream with an error event in the API's error shape. Events held in
     /// `buffer` mode are dropped, so nothing after the last release reaches the application.
     fn stop(&mut self, code: BlockCode, message: String) -> Step {
+        if !self.stopped {
+            let outcome = match code {
+                BlockCode::UpstreamError | BlockCode::UpstreamRedirect => "upstream_error",
+                _ => "aborted",
+            };
+            self.record(outcome, 200);
+        }
         self.stopped = true;
         self.held_events.clear();
         let status = axum::http::StatusCode::from_u16(code.http_status())

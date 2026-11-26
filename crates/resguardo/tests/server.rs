@@ -30,6 +30,9 @@ struct Harness {
     url: String,
     keys: Keys,
     client: reqwest::Client,
+    /// The audit log and the public key that verifies it.
+    audit: PathBuf,
+    public_key: PathBuf,
 }
 
 fn key(seed: u8) -> (String, String) {
@@ -64,12 +67,21 @@ async fn harness() -> Harness {
     let (slow, slow_hash) = key(3);
     let (small, small_hash) = key(4);
     let (careful, careful_hash) = key(5);
+    let audit_dir = PathBuf::from(credential_file("unused"))
+        .parent()
+        .unwrap()
+        .join("audit");
+    std::fs::create_dir_all(&audit_dir).unwrap();
+    let audit = audit_dir.join("audit.jsonl");
+    let signing = audit_dir.join("signing.key");
+    let public_key = audit_dir.join("signing.pub");
+    resguardo_audit::SigningKey::create_files(&signing, &public_key).unwrap();
     let source = format!(
         r#"
 [audit]
-path = "unused"
-signing_key = "unused"
-public_key = "unused"
+path = "{audit}"
+signing_key = "{signing}"
+public_key = "{public}"
 
 [policy.actions]
 secret = "block"
@@ -136,6 +148,9 @@ stream_mode = "buffer"
 "#,
         openai = credential_file(OPENAI_KEY),
         anthropic = credential_file(ANTHROPIC_KEY),
+        audit = audit.display(),
+        signing = signing.display(),
+        public = public_key.display(),
     );
     let config = Config::from_toml_str(&source).unwrap();
     let app = Arc::new(App::from_config(&config).unwrap());
@@ -156,6 +171,8 @@ stream_mode = "buffer"
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .unwrap(),
+        audit,
+        public_key,
     }
 }
 
@@ -531,11 +548,14 @@ async fn healthz_answers_without_a_key() {
 }
 
 #[test]
-fn run_refuses_real_providers_until_scanning_and_audit_exist() {
-    let source = include_str!("../../../config/resguardo.example.toml");
-    let config = Config::from_toml_str(source).unwrap();
+fn run_refuses_to_start_without_a_signing_key() {
+    // The temporary guard against real providers is gone with M5; what replaces it is that
+    // nothing runs without the key that signs its receipts (ADR 0015).
+    let source = include_str!("../../../config/resguardo.example.toml")
+        .replace("./data/", "/nonexistent/resguardo-data/");
+    let config = Config::from_toml_str(&source).unwrap();
     let error = App::from_config(&config).unwrap_err().to_string();
-    assert!(error.contains("only accepts local upstreams"), "{error}");
+    assert!(error.contains("resguardo init"), "{error}");
 }
 
 // --- Scanning, policy and redaction (M3.3) -----------------------------------------------
@@ -858,4 +878,118 @@ async fn a_whole_response_with_a_key_is_403() {
     assert_eq!(reply.status, 403);
     assert_eq!(reply.code(), "SENSITIVE_DATA");
     assert!(!String::from_utf8_lossy(&reply.body).contains("AKIA"));
+}
+
+// --- Signed receipts (M5) ----------------------------------------------------------------
+
+/// Every entry of the audit log, parsed.
+fn entries(h: &Harness) -> Vec<Value> {
+    std::fs::read_to_string(&h.audit)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+fn verify(h: &Harness) -> usize {
+    let file = std::fs::File::open(&h.audit).unwrap();
+    let key = resguardo_audit::PublicKey::load(&h.public_key).unwrap();
+    resguardo_audit::verify_log(std::io::BufReader::new(file), &key)
+        .unwrap()
+        .entries
+}
+
+/// Outcome entries are written after the response is sent: wait until they are there.
+async fn wait_for_entries(h: &Harness, n: usize) {
+    for _ in 0..100 {
+        if entries(h).len() >= n {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("expected {n} entries, found {}", entries(h).len());
+}
+
+#[tokio::test]
+async fn g5_three_requests_leave_six_entries_that_verify() {
+    let h = harness().await;
+    for content in ["hola", "Mi DNI es 12345678Z", "adiós"] {
+        let reply = h.openai(&h.keys.bot, &chat_with(content)).await;
+        assert_eq!(reply.status, 200);
+    }
+    wait_for_entries(&h, 6).await;
+    assert_eq!(verify(&h), 6);
+    let all = entries(&h);
+    let kinds: Vec<&str> = all.iter().map(|e| e["kind"].as_str().unwrap()).collect();
+    assert_eq!(
+        kinds,
+        [
+            "decision", "outcome", "decision", "outcome", "decision", "outcome"
+        ]
+    );
+    let dni = &all[2];
+    assert_eq!(dni["principal"], "bot");
+    assert_eq!(dni["provider"], "openai");
+    assert_eq!(dni["model"], "gpt-4.1-mini");
+    assert_eq!(dni["decision"], "redact");
+    assert_eq!(dni["findings"], serde_json::json!({"es_id": 1}));
+    assert!(dni["forwarded_sha256"].is_string());
+    assert_eq!(all[3]["status"], 200);
+    assert_eq!(all[3]["outcome"], "completed");
+    assert!(all[3]["upstream_us"].is_u64());
+}
+
+#[tokio::test]
+async fn g5_the_dni_and_the_key_of_g3_never_appear_in_the_log() {
+    let h = harness().await;
+    h.openai(&h.keys.bot, &chat_with("Mi DNI es 12345678Z"))
+        .await;
+    let blocked = h
+        .openai(&h.keys.bot, &chat_with(&format!("clave {AWS_EXAMPLE_KEY}")))
+        .await;
+    assert_eq!(blocked.status, 403);
+    wait_for_entries(&h, 4).await;
+    let log = std::fs::read_to_string(&h.audit).unwrap();
+    assert!(!log.contains("12345678Z"));
+    assert!(!log.contains("AKIA"));
+    let all = entries(&h);
+    assert_eq!(all[2]["decision"], "block");
+    assert_eq!(all[2]["code"], "SENSITIVE_DATA");
+    assert_eq!(all[2]["class"], "secret");
+    assert_eq!(all[3]["outcome"], "blocked");
+    assert_eq!(all[3]["status"], 403);
+}
+
+#[tokio::test]
+async fn requests_refused_before_the_key_leave_no_receipt_and_later_ones_do() {
+    let h = harness().await;
+    let (stranger, _) = key(99);
+    assert_eq!(h.openai(&stranger, CHAT).await.status, 401);
+    let other = CHAT.replace("gpt-4.1-mini", "gpt-5");
+    assert_eq!(h.openai(&h.keys.bot, &other).await.status, 403);
+    wait_for_entries(&h, 2).await;
+    let all = entries(&h);
+    assert_eq!(all.len(), 2, "no receipt for the unknown key");
+    assert_eq!(all[0]["code"], "MODEL_NOT_ALLOWED");
+}
+
+#[tokio::test]
+async fn a_stream_leaves_its_outcome_when_it_ends_or_is_cut() {
+    let h = harness().await;
+    let reply = h.openai(&h.keys.bot, &stream_chat("hola mundo")).await;
+    assert_eq!(reply.status, 200);
+    let cut = h
+        .openai(
+            &h.keys.bot,
+            &stream_chat(&format!("MOCK_REPLY_REVERSED: {AWS_KEY_REVERSED}")),
+        )
+        .await;
+    assert!(error_event(&cut.body).is_some());
+    wait_for_entries(&h, 4).await;
+    assert_eq!(verify(&h), 4);
+    let all = entries(&h);
+    assert_eq!(all[1]["outcome"], "completed");
+    assert_eq!(all[1]["stream"], true);
+    assert_eq!(all[3]["outcome"], "aborted");
+    assert_eq!(all[3]["response_findings"]["secret"], 1);
 }

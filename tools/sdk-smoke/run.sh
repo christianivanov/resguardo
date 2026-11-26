@@ -85,6 +85,9 @@ models.openai = ["gpt-4.1-mini"]
 models.anthropic = ["claude-sonnet-5-5"]
 EOF
 
+# The signing key pair for the audit log (M5): nothing runs without it.
+"$BIN/resguardo" init --config "$WORK/resguardo.toml" >/dev/null 2>&1
+
 "$BIN/mock-upstream" --listen "127.0.0.1:$MOCK_PORT" >"$WORK/mock.log" 2>&1 &
 MOCK_PID=$!
 wait_for "http://127.0.0.1:$MOCK_PORT/__mock/requests"
@@ -107,3 +110,6 @@ if printf '%s' "$REQUESTS" | grep -q "rsg_"; then
   exit 1
 fi
 echo "ok   no virtual key reached the upstream"
+
+# Every request left signed receipts that verify with the public key.
+"$BIN/resguardo" verify-log "$WORK/audit.jsonl" --pubkey "$WORK/signing.pub" | sed 's/^.*: /ok   audit log verifies: /' 

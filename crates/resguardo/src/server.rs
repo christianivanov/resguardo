@@ -3,12 +3,12 @@
 //! Order of checks, each one failing closed:
 //! route → virtual key → query → content type and encoding → rate limit → body size →
 //! strict parsing → message count → model allowed → scanning → policy → redaction →
-//! (signed receipt: M5) → egress.
+//! signed decision entry → egress → response scanning → signed outcome entry.
 //!
-//! Until the signed audit log (M5) exists, [`App::from_config`] refuses any upstream that
-//! is not a local, explicitly insecure one: nothing can reach a real provider without a
-//! receipt.
+//! From the virtual key on, every request leaves two signed entries in the audit log
+//! (ADR 0015). If the decision entry cannot be written, nothing leaves.
 
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -26,6 +26,7 @@ use axum::http::header::{
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::StreamExt;
+use resguardo_audit::{AuditLog, SigningKey};
 use resguardo_core::config::StreamConfig;
 use resguardo_core::{
     BlockCode, Config, DataClass, Decision, KeyRing, OffsetDateTime, Principal, Provider,
@@ -41,6 +42,7 @@ use serde_json::json;
 use tokio::net::TcpListener;
 
 use crate::rate_limit::{RateLimiter, retry_after_secs};
+use crate::receipt::{Receipt, micros, outcome_entry};
 
 const X_API_KEY: HeaderName = HeaderName::from_static("x-api-key");
 const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-resguardo-request-id");
@@ -56,6 +58,7 @@ pub struct App {
     pub(crate) policy: Policy,
     pub(crate) controls: ResponseControls,
     pub(crate) stream: StreamConfig,
+    pub(crate) audit: AuditLog,
     egress: Egress,
     request_timeout: Duration,
 }
@@ -63,16 +66,16 @@ pub struct App {
 impl App {
     /// Loads provider credentials and builds the HTTP client. Any problem stops startup.
     pub fn from_config(config: &Config) -> anyhow::Result<Self> {
-        // Temporary guard, removed when the audit log exists (M5).
-        if let Some(upstream) = config.upstreams.values().find(|u| !u.insecure) {
+        let signing_key = &config.audit.signing_key;
+        if !signing_key.exists() {
             bail!(
-                "upstream {} ({}) is not local: until the signed audit log (M5) exists, \
-                 `resguardo run` only accepts local upstreams with allow_insecure_upstream = true, \
-                 such as tools/mock-upstream",
-                upstream.provider,
-                upstream.base_url
+                "no signing key at {}: create one with `resguardo init`",
+                signing_key.display()
             );
         }
+        let key = SigningKey::load(signing_key).context("loading the signing key")?;
+        let audit = AuditLog::open(&config.audit.path, key, config.audit.fsync)
+            .context("opening the audit log")?;
         let egress = Egress::from_config(config).context("setting up egress")?;
         let pipeline = Pipeline::new(&config.scan).context("setting up scanning")?;
         Ok(Self {
@@ -82,6 +85,7 @@ impl App {
             policy: Policy::from_config(config),
             controls: ResponseControls::from_config(&config.response),
             stream: config.stream.clone(),
+            audit,
             egress,
             request_timeout: Duration::from_secs(config.server.request_timeout_secs),
         })
@@ -106,14 +110,18 @@ pub async fn serve(
         .await
 }
 
-/// In M1 there is no audit log or signing key to check yet (Annex H: M5).
-async fn healthz() -> Response {
-    (
-        StatusCode::OK,
-        [(CONTENT_TYPE, "application/json")],
-        r#"{"status":"ok"}"#,
-    )
-        .into_response()
+/// Annex H: 200 while the audit log accepts entries; 503 after a failed write, until a
+/// write succeeds again.
+async fn healthz(State(app): State<Arc<App>>) -> Response {
+    let (status, body) = if app.audit.healthy() {
+        (StatusCode::OK, r#"{"status":"ok"}"#)
+    } else {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            r#"{"status":"audit_unavailable"}"#,
+        )
+    };
+    (status, [(CONTENT_TYPE, "application/json")], body).into_response()
 }
 
 /// Why Resguardo answered itself instead of forwarding.
@@ -140,6 +148,13 @@ impl Failure {
     fn invalid(message: impl Into<String>) -> Self {
         Self::block(BlockCode::InvalidRequest, message)
     }
+
+    pub(crate) fn code(&self) -> Option<BlockCode> {
+        match self {
+            Failure::NotFound => None,
+            Failure::Block { code, .. } => Some(*code),
+        }
+    }
 }
 
 async fn proxy(State(app): State<Arc<App>>, request: Request) -> Response {
@@ -164,7 +179,23 @@ async fn handle(
     let headers = &parts.headers;
 
     let principal = authenticate(app, headers)?;
+    // From here on the request gets its receipts (ADR 0015).
+    let mut receipt = Receipt::new(request_id, principal);
+    match proceed(app, format, &parts, body, principal, &mut receipt).await {
+        Ok(response) => Ok(response),
+        Err(failure) => Err(receipt.failed(app, failure).await),
+    }
+}
 
+async fn proceed(
+    app: &Arc<App>,
+    format: ApiFormat,
+    parts: &axum::http::request::Parts,
+    body: Body,
+    principal: &Principal,
+    receipt: &mut Receipt,
+) -> Result<Response, Failure> {
+    let headers = &parts.headers;
     let query = parts.uri.query();
     check_query(format, query).map_err(|e| Failure::invalid(e.to_string()))?;
     check_content_headers(headers)?;
@@ -182,9 +213,13 @@ async fn handle(
     let bytes = tokio::time::timeout(app.request_timeout, read_body(body, headers, limit))
         .await
         .map_err(|_| Failure::invalid("request body was not received in time"))??;
+    receipt.set("body_bytes", json!(bytes.len()));
+    receipt.body("body", &bytes);
 
     let parsed = parse_request(format, &bytes).map_err(|e| Failure::invalid(e.to_string()))?;
     let stream = parsed.stream;
+    receipt.set("model", json!(parsed.model));
+    receipt.set("stream", json!(stream));
     if parsed.message_count > principal.limits.max_messages {
         return Err(Failure::block(
             BlockCode::BodyTooLarge,
@@ -200,11 +235,28 @@ async fn handle(
             "this model is not allowed for this key",
         )
     })?;
+    receipt.set("provider", json!(provider.as_str()));
 
-    let (decision, body) = inspect(Arc::clone(app), principal.clone(), parsed, bytes).await?;
-
-    // M5 goes here: write the signed decision entry before anything leaves. Until then
-    // `App::from_config` only allows local upstreams.
+    let inspection = inspect(Arc::clone(app), principal.clone(), parsed, bytes).await?;
+    receipt.findings(&inspection.report);
+    let (decision, body) = match inspection.outcome {
+        Inspected::Allow(body) => ("allow", body),
+        Inspected::Redact(body) => {
+            receipt.body("forwarded", &body);
+            ("redact", body)
+        }
+        Inspected::Block(code, class) => {
+            receipt.set("decision", json!("block"));
+            receipt.set("code", json!(code.as_str()));
+            if let Some(class) = class {
+                receipt.set("class", json!(class.as_str()));
+            }
+            return Err(Failure::block(code, blocked_message(class)));
+        }
+    };
+    receipt.set("decision", json!(decision));
+    // The signed decision entry, flushed, before anything is sent (ADR 0003).
+    receipt.decide(app).await?;
 
     let outbound = OutboundRequest {
         provider,
@@ -218,6 +270,7 @@ async fn handle(
         eprintln!("upstream {provider}: {error}");
         Failure::block(error.block_code(), upstream_message(error.block_code()))
     };
+    let upstream_started = Instant::now();
     let answer = if stream {
         app.egress
             .send_streaming(outbound)
@@ -228,16 +281,30 @@ async fn handle(
     };
     match answer {
         UpstreamAnswer::Whole(response) => {
-            let response =
+            let upstream_us = micros(upstream_started);
+            let (response, response_findings) =
                 guard_whole(Arc::clone(app), principal.clone(), format, response).await?;
-            Ok(forwarded(response, request_id, decision))
+            let total = micros(receipt.started);
+            let fields = BTreeMap::from([
+                ("status".to_owned(), json!(response.status.as_u16())),
+                ("outcome".to_owned(), json!("completed")),
+                ("upstream_us".to_owned(), json!(upstream_us)),
+                (
+                    "overhead_us".to_owned(),
+                    json!(total.saturating_sub(upstream_us)),
+                ),
+                ("response_findings".to_owned(), response_findings),
+            ]);
+            outcome_entry(app, &receipt.request_id, fields).await;
+            Ok(forwarded(response, &receipt.request_id, decision))
         }
         UpstreamAnswer::Stream(upstream) => Ok(streamed(
             Arc::clone(app),
             principal.clone(),
             format,
             upstream,
-            request_id,
+            receipt,
+            upstream_started,
             decision,
         )),
     }
@@ -249,7 +316,7 @@ async fn guard_whole(
     principal: Principal,
     format: ApiFormat,
     response: UpstreamResponse,
-) -> Result<UpstreamResponse, Failure> {
+) -> Result<(UpstreamResponse, Value), Failure> {
     tokio::task::spawn_blocking(move || {
         crate::response::guard_whole(&app, &principal, format, response)
     })
@@ -266,14 +333,23 @@ fn streamed(
     principal: Principal,
     format: ApiFormat,
     upstream: UpstreamStream,
-    request_id: &str,
+    receipt: &Receipt,
+    upstream_started: Instant,
     decision: &'static str,
 ) -> Response {
     use crate::response::{Step, StreamGuard};
 
+    let request_id = receipt.request_id.as_str();
     let status = upstream.status();
     let upstream_headers = upstream.headers().clone();
-    let guard = StreamGuard::new(app, principal, format, request_id.to_owned());
+    let guard = StreamGuard::new(
+        app,
+        principal,
+        format,
+        request_id.to_owned(),
+        receipt.started,
+        upstream_started,
+    );
     // `unfold` turns a state and an async step function into a stream, like an iterator
     // whose `next` may wait. `None` as state means the stream is over.
     let body = futures_util::stream::unfold(Some((upstream, guard)), |state| async move {
@@ -311,8 +387,21 @@ fn streamed(
     response
 }
 
-/// Scans the texts, asks policy and redacts if needed. Returns the decision for the
-/// `x-resguardo-decision` header and the body to send: the original bytes when allowed.
+/// What inspection decided, with the scan report for the receipt.
+struct Inspection {
+    report: resguardo_core::ScanReport,
+    outcome: Inspected,
+}
+
+enum Inspected {
+    /// The original bytes.
+    Allow(Vec<u8>),
+    /// The redacted bytes.
+    Redact(Vec<u8>),
+    Block(BlockCode, Option<DataClass>),
+}
+
+/// Scans the texts, asks policy and redacts if needed.
 ///
 /// Scanning is CPU work, so it runs on Tokio's blocking pool instead of an async worker,
 /// like handing a heavy task to a separate executor in Java. That needs owned values
@@ -322,7 +411,7 @@ async fn inspect(
     principal: Principal,
     parsed: ParsedRequest,
     bytes: Vec<u8>,
-) -> Result<(&'static str, Vec<u8>), Failure> {
+) -> Result<Inspection, Failure> {
     let scan_failed = || {
         Failure::block(
             BlockCode::ScanError,
@@ -335,16 +424,17 @@ async fn inspect(
             eprintln!("scanning: {error}");
             scan_failed()
         })?;
-        match app.policy.decide(&principal, &report) {
-            Decision::Allow { .. } => Ok(("allow", bytes)),
-            Decision::Redact { spans, .. } => redact(&bytes, &parsed, &spans)
-                .map(|body| ("redact", body))
-                .map_err(|error| {
+        let outcome = match app.policy.decide(&principal, &report) {
+            Decision::Allow { .. } => Inspected::Allow(bytes),
+            Decision::Redact { spans, .. } => {
+                Inspected::Redact(redact(&bytes, &parsed, &spans).map_err(|error| {
                     eprintln!("redaction: {error}");
                     scan_failed()
-                }),
-            Decision::Block { code, class } => Err(Failure::block(code, blocked_message(class))),
-        }
+                })?)
+            }
+            Decision::Block { code, class } => Inspected::Block(code, class),
+        };
+        Ok(Inspection { report, outcome })
     })
     .await
     .map_err(|_| scan_failed())?
