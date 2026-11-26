@@ -160,7 +160,10 @@ fn binary_payloads_are_not_decoded_and_raise_no_flags() {
             .iter()
             .map(|f| (f.class, f.span.clone(), f.via.len()))
             .collect();
-        assert_eq!(found, vec![(DataClass::SecretCandidate, 0..encoded.len(), 0)]);
+        assert_eq!(
+            found,
+            vec![(DataClass::SecretCandidate, 0..encoded.len(), 0)]
+        );
     }
 }
 
