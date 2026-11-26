@@ -5,12 +5,14 @@
 #![forbid(unsafe_code)]
 
 pub mod json;
+pub mod markdown;
 
 pub use json::{ProtoError, parse_strict};
 pub mod redact;
 pub mod request;
 pub mod sse;
 
+pub use markdown::{MarkdownFilter, ResponseControls};
 pub use redact::{RedactError, redact};
 pub use sse::{SseError, SseEvent, SseParser};
 
