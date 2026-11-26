@@ -13,5 +13,6 @@ workspace = true
 [dependencies]
 resguardo-core.workspace = true
 base64.workspace = true
+regex.workspace = true
 thiserror.workspace = true
 unicode-normalization.workspace = true

@@ -6,9 +6,12 @@ use std::ops::Range;
 use resguardo_core::config::ScanConfig;
 use resguardo_core::{DataClass, Finding, ScanFlag, ScanLimit, ScanReport, ScanText};
 
-use crate::aggregate::{RawFinding, merge_overlapping};
+use crate::aggregate::{RawFinding, drop_candidates_overlapping_secrets, merge_overlapping};
 use crate::decode::{Layer, decode, find_candidates};
+use crate::entropy::EntropyScanner;
 use crate::normalize::normalize;
+use crate::scanner::Scanner;
+use crate::secrets::SecretScanner;
 
 /// Confidence of an invisible-character finding: their presence is certain (ADR 0008).
 const INVISIBLE_CONFIDENCE: u8 = 100;
@@ -36,6 +39,9 @@ pub enum ScanError {
 pub struct Pipeline {
     max_decode_depth: u8,
     max_derived_bytes: usize,
+    /// Run on every text, original or decoded. `Box<dyn Scanner>` is a heap-allocated value
+    /// behind an interface, like a `List<Scanner>` in Java.
+    scanners: Vec<Box<dyn Scanner>>,
 }
 
 /// Where findings of a decoded text are reported: the outermost encoded fragment in the
@@ -69,6 +75,13 @@ impl Pipeline {
         Ok(Self {
             max_decode_depth: config.max_decode_depth,
             max_derived_bytes: config.max_derived_bytes,
+            scanners: vec![
+                Box::new(SecretScanner::new()?),
+                Box::new(EntropyScanner {
+                    threshold: config.entropy_threshold,
+                    min_len: config.entropy_min_len,
+                }),
+            ],
         })
     }
 
@@ -89,7 +102,9 @@ impl Pipeline {
         let mut collected = Collected::default();
         self.scan_layer(text, 0, None, &mut collected)?;
 
-        let findings = merge_overlapping(collected.findings)
+        let mut raw = collected.findings;
+        drop_candidates_overlapping_secrets(&mut raw);
+        let findings = merge_overlapping(raw)
             .into_iter()
             .map(|f| Finding {
                 class: f.class,
@@ -152,6 +167,20 @@ impl Pipeline {
                 span: outer.map_or_else(|| run.span.clone(), |o| o.span.clone()),
                 rule: run.kind.rule(),
                 confidence: INVISIBLE_CONFIDENCE,
+                via: via.clone(),
+            });
+        }
+
+        let mut detections = Vec::new();
+        for scanner in &self.scanners {
+            scanner.scan(&normalized.text, &mut detections)?;
+        }
+        for detection in detections {
+            collected.findings.push(RawFinding {
+                class: detection.class,
+                span: report_span(detection.span)?,
+                rule: detection.rule,
+                confidence: detection.confidence,
                 via: via.clone(),
             });
         }

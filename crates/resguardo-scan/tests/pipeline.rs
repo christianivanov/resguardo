@@ -144,15 +144,24 @@ fn with_depth_zero_nothing_is_decoded_and_text_is_flagged() {
 }
 
 #[test]
-fn binary_payloads_raise_neither_findings_nor_flags() {
+fn binary_payloads_are_not_decoded_and_raise_no_flags() {
     let binary: Vec<u8> = (0..=255u8).cycle().take(4096).collect();
     let encoded = STANDARD.encode(binary);
     let config = ScanConfig {
         max_decode_depth: 0,
         ..ScanConfig::default()
     };
-    assert_eq!(scan(&encoded), ScanReport::default());
-    assert_eq!(scan_with(&config, &encoded), ScanReport::default());
+    for report in [scan(&encoded), scan_with(&config, &encoded)] {
+        assert!(report.flags.is_empty(), "{report:?}");
+        // The only finding is the entropy check on the encoded text itself (Annex F.2): nothing
+        // comes from a decoded layer.
+        let found: Vec<_> = report
+            .findings
+            .iter()
+            .map(|f| (f.class, f.span.clone(), f.via.len()))
+            .collect();
+        assert_eq!(found, vec![(DataClass::SecretCandidate, 0..encoded.len(), 0)]);
+    }
 }
 
 #[test]

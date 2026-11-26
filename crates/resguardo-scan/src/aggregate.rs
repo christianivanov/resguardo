@@ -19,6 +19,43 @@ pub(crate) struct RawFinding {
     pub via: Vec<Layer>,
 }
 
+/// Drops every `secret_candidate` that overlaps a `secret`: the specific finding already says
+/// what the value is (ADR 0008). Only `secret` counts. If every class did, an invisible
+/// character inside a high-entropy word would remove the candidate, and with
+/// `invisible_text = "redact"` the word would leave without a flag.
+pub(crate) fn drop_candidates_overlapping_secrets(findings: &mut Vec<RawFinding>) {
+    let mut secrets: Vec<Range<usize>> = findings
+        .iter()
+        .filter(|f| f.class == DataClass::Secret)
+        .map(|f| f.span.clone())
+        .collect();
+    if secrets.is_empty() {
+        return;
+    }
+    // Disjoint, sorted intervals: each candidate then needs one binary search, so a text with
+    // many findings costs O(n log n), not O(n^2).
+    secrets.sort_by_key(|s| (s.start, s.end));
+    let mut covered: Vec<Range<usize>> = Vec::with_capacity(secrets.len());
+    for span in secrets {
+        if let Some(last) = covered.last_mut()
+            && span.start <= last.end
+        {
+            last.end = last.end.max(span.end);
+        } else {
+            covered.push(span);
+        }
+    }
+    findings.retain(|f| f.class != DataClass::SecretCandidate || !overlaps_any(&covered, &f.span));
+}
+
+/// Whether `span` overlaps one of the disjoint, sorted `covered` intervals.
+fn overlaps_any(covered: &[Range<usize>], span: &Range<usize>) -> bool {
+    let first_ending_after = covered.partition_point(|c| c.end <= span.start);
+    covered
+        .get(first_ending_after)
+        .is_some_and(|c| c.start < span.end)
+}
+
 /// Merges overlapping findings of the same class into one whose span is the union of theirs,
 /// so redaction covers everything any detector saw. Returns them ordered by position.
 pub(crate) fn merge_overlapping(mut findings: Vec<RawFinding>) -> Vec<RawFinding> {
@@ -129,6 +166,71 @@ mod tests {
             finding(DataClass::Secret, 0..10, "secret.a", 90),
         ]);
         assert_eq!(merged[0].rule, "secret.a");
+    }
+
+    #[test]
+    fn candidates_overlapping_a_secret_are_dropped() {
+        let mut findings = vec![
+            finding(DataClass::Secret, 10..20, "secret.a", 90),
+            finding(DataClass::Secret, 20..25, "secret.b", 90),
+            finding(
+                DataClass::SecretCandidate,
+                0..10,
+                "secret_candidate.entropy",
+                50,
+            ),
+            finding(
+                DataClass::SecretCandidate,
+                5..11,
+                "secret_candidate.entropy",
+                50,
+            ),
+            finding(
+                DataClass::SecretCandidate,
+                24..30,
+                "secret_candidate.entropy",
+                50,
+            ),
+            finding(
+                DataClass::SecretCandidate,
+                25..40,
+                "secret_candidate.entropy",
+                50,
+            ),
+            finding(DataClass::InvisibleText, 12..13, "invisible_text.bidi", 100),
+        ];
+        drop_candidates_overlapping_secrets(&mut findings);
+        let kept: Vec<_> = findings.iter().map(|f| (f.class, f.span.clone())).collect();
+        assert_eq!(
+            kept,
+            vec![
+                (DataClass::Secret, 10..20),
+                (DataClass::Secret, 20..25),
+                (DataClass::SecretCandidate, 0..10),
+                (DataClass::SecretCandidate, 25..40),
+                (DataClass::InvisibleText, 12..13),
+            ]
+        );
+    }
+
+    #[test]
+    fn candidates_stay_when_only_other_classes_overlap() {
+        let mut findings = vec![
+            finding(
+                DataClass::InvisibleText,
+                5..8,
+                "invisible_text.zero_width",
+                100,
+            ),
+            finding(
+                DataClass::SecretCandidate,
+                0..40,
+                "secret_candidate.entropy",
+                50,
+            ),
+        ];
+        drop_candidates_overlapping_secrets(&mut findings);
+        assert_eq!(findings.len(), 2);
     }
 
     #[test]

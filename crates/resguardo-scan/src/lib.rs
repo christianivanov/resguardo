@@ -8,8 +8,11 @@
 
 mod aggregate;
 mod decode;
+mod entropy;
 mod normalize;
 mod pipeline;
+mod scanner;
+mod secrets;
 
 pub use pipeline::{Pipeline, ScanError};
 
