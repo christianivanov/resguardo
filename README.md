@@ -107,7 +107,6 @@ Being honest about limits is part of the design. Resguardo does not detect promp
 - [Getting started](docs/GETTING_STARTED.md): the demo, a step-by-step setup, SDK usage and error codes
 - [Architecture and security](docs/ARCHITECTURE.md): crates, request path and the controls in code today
 - [Threat model](docs/THREAT_MODEL.md) and [architecture decisions](docs/adr/)
-- [Decisions to review](docs/REVIEW.md): taken during implementation, pending the maintainer's review
 - [Running Claude Code through Resguardo](docs/research/claude-code-gateway.md)
 
 ## Contributing
