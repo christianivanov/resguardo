@@ -8,7 +8,9 @@
 //! - If the last user text contains `MOCK_REPLY:`, the reply is everything after it. Tests use
 //!   this to make the "model" say something specific (for example a Markdown image).
 //! - Model `mock-redirect` answers `302`; `mock-error` answers `500` with a provider error body;
-//!   `mock-truncate` cuts a stream after the first text chunk, without the closing events.
+//!   `mock-truncate` cuts a stream after the first text chunk, without the closing events;
+//!   `mock-stall` sends the first events of a stream and then nothing, without closing it;
+//!   `mock-slow` sends each stream event [`SLOW_EVENT_PAUSE`] after the previous one.
 //! - With `"stream": true` the reply is sent as SSE in chunks of [`CHUNK_CHARS`] characters,
 //!   using each provider's event format (Anthropic includes a `ping`).
 #![forbid(unsafe_code)]
@@ -26,6 +28,9 @@ use axum::routing::{get, post};
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
+
+/// Pause between stream events for the `mock-slow` model.
+pub const SLOW_EVENT_PAUSE: std::time::Duration = std::time::Duration::from_millis(300);
 
 /// Characters per streamed text chunk.
 pub const CHUNK_CHARS: usize = 8;
@@ -252,13 +257,20 @@ fn respond(api: Api, seq: usize, body: &[u8]) -> Response {
 
     let reply = reply_text(&last_user_text(&request));
     let truncate = model == "mock-truncate";
+    let pacing = match model.as_str() {
+        "mock-stall" => Pacing::StallAfter(2),
+        "mock-slow" => Pacing::Slow,
+        _ => Pacing::Immediate,
+    };
     let mut response = match (api, stream) {
         (Api::OpenAi, false) => json_response(StatusCode::OK, &openai_message(seq, &model, &reply)),
         (Api::Anthropic, false) => {
             json_response(StatusCode::OK, &anthropic_message(seq, &model, &reply))
         }
-        (Api::OpenAi, true) => sse_response(openai_events(seq, &model, &reply, truncate)),
-        (Api::Anthropic, true) => sse_response(anthropic_events(seq, &model, &reply, truncate)),
+        (Api::OpenAi, true) => sse_response(openai_events(seq, &model, &reply, truncate), pacing),
+        (Api::Anthropic, true) => {
+            sse_response(anthropic_events(seq, &model, &reply, truncate), pacing)
+        }
     };
     add_provider_headers(api, seq, response.headers_mut());
     response
@@ -429,9 +441,39 @@ fn json_response(status: StatusCode, body: &Value) -> Response {
         .into_response()
 }
 
+/// How stream events are sent.
+#[derive(Clone, Copy)]
+enum Pacing {
+    Immediate,
+    /// [`SLOW_EVENT_PAUSE`] before each event after the first.
+    Slow,
+    /// This many events, then silence with the connection open.
+    StallAfter(usize),
+}
+
 /// Each event is a separate body frame, so the client sees realistic chunk boundaries.
-fn sse_response(events: Vec<Bytes>) -> Response {
-    let stream = futures_util::stream::iter(events.into_iter().map(Ok::<_, Infallible>));
+fn sse_response(events: Vec<Bytes>, pacing: Pacing) -> Response {
+    let events: Vec<Bytes> = match pacing {
+        Pacing::StallAfter(n) => events.into_iter().take(n).collect(),
+        Pacing::Immediate | Pacing::Slow => events,
+    };
+    let sent = futures_util::stream::unfold(
+        (events.into_iter(), true),
+        move |(mut events, first)| async move {
+            let event = events.next()?;
+            if matches!(pacing, Pacing::Slow) && !first {
+                tokio::time::sleep(SLOW_EVENT_PAUSE).await;
+            }
+            Some((Ok::<_, Infallible>(event), (events, false)))
+        },
+    );
+    let stream: futures_util::stream::BoxStream<'static, Result<Bytes, Infallible>> = match pacing {
+        Pacing::StallAfter(_) => Box::pin(futures_util::StreamExt::chain(
+            sent,
+            futures_util::stream::pending(),
+        )),
+        Pacing::Immediate | Pacing::Slow => Box::pin(sent),
+    };
     (
         StatusCode::OK,
         [

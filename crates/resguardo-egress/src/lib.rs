@@ -155,6 +155,53 @@ pub struct OutboundRequest<'a> {
     pub body: Vec<u8>,
 }
 
+/// What a stream request got back.
+#[derive(Debug)]
+pub enum UpstreamAnswer {
+    /// Not an SSE stream (a provider error, for example), read whole.
+    Whole(UpstreamResponse),
+    Stream(UpstreamStream),
+}
+
+/// An SSE response being read. Bytes are counted against `max_response_bytes`.
+#[derive(Debug)]
+pub struct UpstreamStream {
+    status: StatusCode,
+    headers: HeaderMap,
+    response: reqwest::Response,
+    read: usize,
+    max_bytes: usize,
+}
+
+impl UpstreamStream {
+    pub fn status(&self) -> StatusCode {
+        self.status
+    }
+
+    /// Only the allowlisted response headers.
+    pub fn headers(&self) -> &HeaderMap {
+        &self.headers
+    }
+
+    /// The next chunk, or `None` at the end. A stream silent for the request timeout fails
+    /// with [`EgressError::Timeout`].
+    pub async fn next_chunk(&mut self) -> Result<Option<Vec<u8>>, EgressError> {
+        let Some(chunk) = self
+            .response
+            .chunk()
+            .await
+            .map_err(EgressError::from_reqwest)?
+        else {
+            return Ok(None);
+        };
+        self.read += chunk.len();
+        if self.read > self.max_bytes {
+            return Err(EgressError::ResponseTooLarge(self.max_bytes));
+        }
+        Ok(Some(chunk.to_vec()))
+    }
+}
+
 /// A complete, non-streamed upstream response.
 #[derive(Debug)]
 pub struct UpstreamResponse {
@@ -176,6 +223,7 @@ struct Destination {
 pub struct Egress {
     client: reqwest::Client,
     destinations: BTreeMap<Provider, Destination>,
+    request_timeout: Duration,
     max_response_bytes: usize,
 }
 
@@ -217,7 +265,9 @@ impl Egress {
             .retry(reqwest::retry::never())
             .no_proxy()
             .referer(false)
-            .timeout(settings.request_timeout)
+            // Idle timeout: each read must arrive within it. Non-streamed requests also get a
+            // total timeout of the same length, per request (ADR 0014).
+            .read_timeout(settings.request_timeout)
             .connect_timeout(settings.connect_timeout)
             .user_agent(concat!("resguardo/", env!("CARGO_PKG_VERSION")))
             .build()
@@ -225,6 +275,7 @@ impl Egress {
         Ok(Self {
             client,
             destinations,
+            request_timeout: settings.request_timeout,
             max_response_bytes: settings.max_response_bytes,
         })
     }
@@ -272,11 +323,53 @@ impl Egress {
         Ok(url)
     }
 
-    /// Sends one request and reads the whole response, up to `max_response_bytes`.
+    /// Sends one request and reads the whole response, up to `max_response_bytes`, within
+    /// the total request timeout.
     pub async fn send(
         &self,
         request: OutboundRequest<'_>,
     ) -> Result<UpstreamResponse, EgressError> {
+        let response = self.start(request, Some(self.request_timeout)).await?;
+        read_response(response, self.max_response_bytes).await
+    }
+
+    /// Sends a stream request. An SSE answer is returned as a stream with no total timeout,
+    /// only the idle one (ADR 0014); anything else, such as a provider error, is read whole.
+    pub async fn send_streaming(
+        &self,
+        request: OutboundRequest<'_>,
+    ) -> Result<UpstreamAnswer, EgressError> {
+        let response = self.start(request, None).await?;
+        check_head(&response, self.max_response_bytes)?;
+        let is_sse = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| {
+                v.split(';')
+                    .next()
+                    .is_some_and(|media| media.trim().eq_ignore_ascii_case("text/event-stream"))
+            });
+        if response.status().is_success() && is_sse {
+            Ok(UpstreamAnswer::Stream(UpstreamStream {
+                status: response.status(),
+                headers: returned_response_headers(response.headers()),
+                response,
+                read: 0,
+                max_bytes: self.max_response_bytes,
+            }))
+        } else {
+            read_response(response, self.max_response_bytes)
+                .await
+                .map(UpstreamAnswer::Whole)
+        }
+    }
+
+    async fn start(
+        &self,
+        request: OutboundRequest<'_>,
+        total_timeout: Option<Duration>,
+    ) -> Result<reqwest::Response, EgressError> {
         let url = self.url(request.provider, request.path, request.query)?;
         let destination = self.destination(request.provider)?;
 
@@ -290,15 +383,11 @@ impl Egress {
             headers.insert(name, value);
         }
 
-        let response = self
-            .client
-            .post(url)
-            .headers(headers)
-            .body(request.body)
-            .send()
-            .await
-            .map_err(EgressError::from_reqwest)?;
-        read_response(response, self.max_response_bytes).await
+        let mut builder = self.client.post(url).headers(headers).body(request.body);
+        if let Some(timeout) = total_timeout {
+            builder = builder.timeout(timeout);
+        }
+        builder.send().await.map_err(EgressError::from_reqwest)
     }
 
     fn destination(&self, provider: Provider) -> Result<&Destination, EgressError> {
@@ -375,10 +464,8 @@ fn auth_header(
     Ok((name, value))
 }
 
-async fn read_response(
-    mut response: reqwest::Response,
-    max_bytes: usize,
-) -> Result<UpstreamResponse, EgressError> {
+/// No redirects, no compressed bodies, no declared size over the limit.
+fn check_head(response: &reqwest::Response, max_bytes: usize) -> Result<(), EgressError> {
     let status = response.status();
     if status.is_redirection() {
         return Err(EgressError::Redirect(status.as_u16()));
@@ -390,13 +477,22 @@ async fn read_response(
     {
         return Err(EgressError::ContentEncoding);
     }
-    let too_large = EgressError::ResponseTooLarge(max_bytes);
     if response
         .content_length()
         .is_some_and(|length| usize::try_from(length).map_or(true, |l| l > max_bytes))
     {
-        return Err(too_large);
+        return Err(EgressError::ResponseTooLarge(max_bytes));
     }
+    Ok(())
+}
+
+async fn read_response(
+    mut response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<UpstreamResponse, EgressError> {
+    check_head(&response, max_bytes)?;
+    let status = response.status();
+    let too_large = EgressError::ResponseTooLarge(max_bytes);
     let headers = returned_response_headers(response.headers());
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(EgressError::from_reqwest)? {

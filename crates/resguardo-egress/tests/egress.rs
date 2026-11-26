@@ -378,3 +378,166 @@ fn credential_problems_stop_startup() {
             .contains("RESGUARDO_TEST_SURELY_UNSET_9c1e")
     );
 }
+
+// --- Streaming (ADR 0014) ----------------------------------------------------------------
+
+use resguardo_egress::UpstreamAnswer;
+
+fn stream_body(model: &str) -> String {
+    format!(
+        r#"{{"model":"{model}","stream":true,"messages":[{{"role":"user","content":"hola mundo"}}]}}"#
+    )
+}
+
+async fn fixture_with_timeout(timeout: Duration, max_response_bytes: usize) -> Fixture {
+    let mut f = fixture(max_response_bytes).await;
+    let base = f.mock.base_url();
+    let upstreams = BTreeMap::from([(
+        Provider::OpenAi,
+        upstream(
+            Provider::OpenAi,
+            &base,
+            Some(credential_file("openai.key", OPENAI_KEY)),
+        ),
+    )]);
+    let settings = EgressSettings {
+        request_timeout: timeout,
+        connect_timeout: timeout,
+        max_response_bytes,
+    };
+    f.egress = Egress::new(&upstreams, settings).expect("egress builds");
+    f
+}
+
+/// Reads a whole stream, or the error that ended it.
+async fn read_stream(answer: UpstreamAnswer) -> Result<Vec<u8>, EgressError> {
+    let UpstreamAnswer::Stream(mut stream) = answer else {
+        panic!("expected a stream");
+    };
+    let mut bytes = Vec::new();
+    while let Some(chunk) = stream.next_chunk().await? {
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
+#[tokio::test]
+async fn an_sse_answer_is_returned_as_a_stream() {
+    let f = fixture(1 << 20).await;
+    let headers = HeaderMap::new();
+    let body = stream_body("gpt-4.1-mini");
+    let answer = f
+        .egress
+        .send_streaming(request(
+            Provider::OpenAi,
+            CHAT_COMPLETIONS_PATH,
+            None,
+            &headers,
+            &body,
+        ))
+        .await
+        .unwrap();
+    let UpstreamAnswer::Stream(stream) = &answer else {
+        panic!("expected a stream");
+    };
+    assert_eq!(stream.status().as_u16(), 200);
+    assert_eq!(stream.headers()["content-type"], "text/event-stream");
+    let text = String::from_utf8(read_stream(answer).await.unwrap()).unwrap();
+    assert!(text.ends_with("data: [DONE]\n\n"), "{text}");
+}
+
+#[tokio::test]
+async fn an_error_answer_to_a_stream_request_is_read_whole() {
+    let f = fixture(1 << 20).await;
+    let headers = HeaderMap::new();
+    let body = ANTHROPIC_BODY
+        .replace("claude-sonnet-5-5", "mock-error")
+        .replace("\"max_tokens\"", "\"stream\":true,\"max_tokens\"");
+    let answer = f
+        .egress
+        .send_streaming(request(
+            Provider::Anthropic,
+            MESSAGES_PATH,
+            None,
+            &headers,
+            &body,
+        ))
+        .await
+        .unwrap();
+    let UpstreamAnswer::Whole(response) = answer else {
+        panic!("expected a whole response");
+    };
+    assert_eq!(response.status.as_u16(), 500);
+}
+
+#[tokio::test]
+async fn a_stream_that_goes_silent_is_cut_by_the_read_timeout() {
+    let f = fixture_with_timeout(Duration::from_millis(500), 1 << 20).await;
+    let headers = HeaderMap::new();
+    let body = stream_body("mock-stall");
+    let answer = f
+        .egress
+        .send_streaming(request(
+            Provider::OpenAi,
+            CHAT_COMPLETIONS_PATH,
+            None,
+            &headers,
+            &body,
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        read_stream(answer).await,
+        Err(EgressError::Timeout)
+    ));
+}
+
+#[tokio::test]
+async fn a_slow_stream_is_not_cut_while_bytes_keep_arriving() {
+    // About ten events 300 ms apart: longer than the 1 s timeout in total, never silent
+    // for that long (ADR 0014: no total timeout on streams).
+    let f = fixture_with_timeout(Duration::from_secs(1), 1 << 20).await;
+    let headers = HeaderMap::new();
+    let body = stream_body("mock-slow");
+    let started = std::time::Instant::now();
+    let answer = f
+        .egress
+        .send_streaming(request(
+            Provider::OpenAi,
+            CHAT_COMPLETIONS_PATH,
+            None,
+            &headers,
+            &body,
+        ))
+        .await
+        .unwrap();
+    let text = String::from_utf8(read_stream(answer).await.unwrap()).unwrap();
+    assert!(text.ends_with("data: [DONE]\n\n"), "{text}");
+    assert!(
+        started.elapsed() > Duration::from_secs(1),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[tokio::test]
+async fn a_stream_over_the_response_limit_is_cut() {
+    let f = fixture(300).await;
+    let headers = HeaderMap::new();
+    let body = stream_body("gpt-4.1-mini");
+    let answer = f
+        .egress
+        .send_streaming(request(
+            Provider::OpenAi,
+            CHAT_COMPLETIONS_PATH,
+            None,
+            &headers,
+            &body,
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        read_stream(answer).await,
+        Err(EgressError::ResponseTooLarge(300))
+    ));
+}
