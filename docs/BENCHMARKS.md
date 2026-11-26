@@ -8,7 +8,7 @@ $ cargo run --release -p resguardo-bench
 
 ## Machine
 
-A 2017 MacBook Pro: macOS, x86_64, 4 logical CPUs, APFS on the internal SSD, release build. A current Linux server is several times faster, and its `fsync` is usually far cheaper. Run the benchmark on your own hardware before relying on these numbers.
+A standard GitHub Actions runner (`ubuntu-latest`), measured by the manual [`lab` workflow](../.github/workflows/lab.yml) on 2026-11-26: Linux 7.0 on Azure, x86_64, 4 vCPUs of an AMD EPYC 9V74, 15 GiB of memory, release build. A runner is a shared virtual machine, so take the numbers as an order of magnitude. The workflow prints the machine next to the results every time it runs; run the benchmark on your own hardware before relying on them.
 
 ## Scanning
 
@@ -16,11 +16,11 @@ Spanish support text with a DNI, an email address and a Base64 fragment every 25
 
 | Text | Per scan | Throughput |
 | --- | --- | --- |
-| 1 KB | 253 µs | 4.0 MB/s |
-| 16 KB | 4.2 ms | 3.9 MB/s |
-| 256 KB | 57.2 ms | 4.6 MB/s |
+| 1 KB | 58 µs | 17.4 MB/s |
+| 16 KB | 896 µs | 18.3 MB/s |
+| 256 KB | 14.9 ms | 17.5 MB/s |
 
-Scanning is linear in the size of the text. A typical chat request of a few kilobytes costs about a millisecond. It runs on Tokio's blocking pool, so a large request does not slow down the others.
+Scanning is linear in the size of the text. A typical chat request of a few kilobytes costs well under a millisecond. It runs on Tokio's blocking pool, so a large request does not slow down the others.
 
 ## Latency added end to end
 
@@ -28,16 +28,17 @@ Scanning is linear in the size of the text. A typical chat request of a few kilo
 
 | Path | p50 | p95 | p99 | Added p50 | Added p99 |
 | --- | --- | --- | --- | --- | --- |
-| Direct to the mock | 193 µs | 339 µs | 1.5 ms | — | — |
-| Through Resguardo, `fsync` on | 10.9 ms | 14.4 ms | 20.6 ms | 10.7 ms | 19.1 ms |
-| Through Resguardo, `fsync` off | 669 µs | 1.7 ms | 3.2 ms | 475 µs | 1.7 ms |
-| Through Resguardo, redacting a DNI, `fsync` on | 10.7 ms | 13.3 ms | 16.0 ms | 10.5 ms | 14.4 ms |
+| Direct to the mock | 72 µs | 89 µs | 101 µs | — | — |
+| Through Resguardo, `fsync` on | 591 µs | 779 µs | 4.1 ms | 519 µs | 4.0 ms |
+| Through Resguardo, `fsync` off | 324 µs | 358 µs | 381 µs | 252 µs | 280 µs |
+| Through Resguardo, redacting a DNI, `fsync` on | 606 µs | 731 µs | 4.1 ms | 534 µs | 4.0 ms |
 
 ## What the numbers say
 
-- **Without `fsync`, Resguardo adds about half a millisecond.** That covers authentication, strict parsing, scanning, policy, signing the receipt and the extra hop.
-- **With `fsync`, the disk dominates.** This laptop takes about 10 ms per `fsync`; on a server SSD it is usually around a millisecond. One `fsync` per request is the price of "the receipt is on disk before anything leaves". The outcome entry does not wait for its own `fsync` (ADR 0015).
-- **Redaction costs nothing visible** next to the network and the disk.
+- **Resguardo adds about half a millisecond at p50, with the receipt flushed to disk.** Without `fsync`, about a quarter of a millisecond: authentication, strict parsing, scanning, policy, signing the receipt and the extra hop.
+- **The p99 with `fsync` is about 4 ms, and that is the disk:** now and then a flush takes longer. Without `fsync` the p99 stays under 0.3 ms. One `fsync` per request is the price of "the receipt is on disk before anything leaves"; the outcome entry does not wait for its own `fsync` (ADR 0015).
+- **The disk matters more than Resguardo.** On a 2017 laptop whose `fsync` takes about 10 ms, the same run added about 10 ms per request. Measure on the disk you will use.
+- **Redaction costs nothing visible** next to the disk.
 - Against a real provider, which answers in hundreds of milliseconds or seconds, the added latency is a small fraction.
 
 ## Limits

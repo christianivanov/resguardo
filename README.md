@@ -64,7 +64,7 @@ audit.jsonl: OK (6 entries)
 
 </details>
 
-The [Docker lab](lab/README.md) adds what one machine cannot show: the application sits on a network whose only way out is Resguardo. It has not been run for this release yet.
+The [Docker lab](lab/README.md) adds what one machine cannot show: the application sits on a network whose only way out is Resguardo, so it cannot even reach the attacker directly. Its real output, from a GitHub Actions runner, is in the lab's README.
 
 ## Who it is for
 
@@ -155,7 +155,14 @@ Both reproduce with one command: [`resguardo accuracy`](docs/ACCURACY.md) and [`
 
 `resguardo accuracy --baseline fixtures/accuracy/baseline.json` fails if any detector gets worse than the numbers above.
 
-**Cost:** latency figures are not published yet. So far it has only been measured on an old laptop, which says little about a server; figures from a Linux server will follow. To measure it on your own machine, run `resguardo-bench` ([how](docs/BENCHMARKS.md)).
+**Cost,** per request, measured on a standard GitHub Actions runner (Linux, 4 vCPUs of an AMD EPYC) against a local mock:
+
+| | p50 | p99 |
+| --- | --- | --- |
+| What Resguardo adds: parsing, scanning, policy, signing the receipt and flushing it to disk, the extra hop | **0.5 ms** | 4.0 ms |
+| The same without flushing the receipt (`fsync` off) | 0.25 ms | 0.28 ms |
+
+The p99 is the disk: now and then flushing the receipt before the request leaves takes longer. A runner is a shared virtual machine, so take these as an order of magnitude and measure on your own disk ([how](docs/BENCHMARKS.md)). Throughput under concurrency is not measured yet.
 
 ## How it compares
 
@@ -178,7 +185,7 @@ What it does not do: load balancing, fallbacks, caching, budgets, dashboards, em
 | M3 | Spanish ids, IBAN, cards, phones and email; policy and redaction | ✅ |
 | M4 | Streaming, response scanning, image and link controls, fuzzing | ✅ |
 | M5 | Signed audit log, `resguardo init` and `resguardo verify-log` | ✅ |
-| M6 | Accuracy corpus, benchmark, exfiltration lab, deployment guide and release | 🚧 Docker lab run and v0.1.0 tag pending |
+| M6 | Accuracy corpus, benchmark, exfiltration lab, deployment guide and release | 🚧 v0.1.0 tag pending |
 
 Next, in v0.2: model-based detectors for unstructured personal data, MCP traffic, workload identity (mTLS, SPIFFE), and timestamped, externally anchored receipts.
 
