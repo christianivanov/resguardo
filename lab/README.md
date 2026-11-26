@@ -4,6 +4,8 @@ The same attack twice: once from an application that can only reach the model th
 
 ## Run it
 
+The outputs below are what the lab is built to show; it has not been run for this release yet. [`local-demo.sh`](local-demo.sh) runs the same attack without Docker, minus the network isolation, and its real output is in the [README](../README.md#see-it-stop-an-exfiltration).
+
 ```console
 $ docker compose -f lab/docker-compose.yml run --rm app
 == target: http://resguardo:8787
