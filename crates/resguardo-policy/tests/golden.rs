@@ -45,6 +45,7 @@ fn principal() -> Principal {
         scan_limits: BTreeMap::new(),
         stream_mode: StreamMode::default(),
         expires_at: None,
+        purpose: None,
     }
 }
 

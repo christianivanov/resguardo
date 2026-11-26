@@ -14,6 +14,7 @@ authors = ["Christian Ivanov del Real"]
 #   egress -> core, audit   (never scan or policy)
 #   resguardo (binary) -> all
 [workspace.dependencies]
+resguardo-audit = { path = "crates/resguardo-audit", version = "0.0.0" }
 resguardo-core = { path = "crates/resguardo-core", version = "0.0.0" }
 resguardo-egress = { path = "crates/resguardo-egress", version = "0.0.0" }
 resguardo-mock-upstream = { path = "tools/mock-upstream", version = "0.0.0" }
@@ -26,6 +27,8 @@ resguardo-scan = { path = "crates/resguardo-scan", version = "0.0.0" }
 anyhow = "1.0.105"
 axum = "0.8.9"
 # Without `simd-unsafe`, its only source of `unsafe` (hyper-util still enables it in the binary).
+# Ed25519 for the audit log, from the provider rustls already uses (ADR 0006, ADR 0015).
+aws-lc-rs = { version = "1.19.0", default-features = false, features = ["aws-lc-sys"] }
 base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 clap = { version = "4.6.10", features = ["derive"] }
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }

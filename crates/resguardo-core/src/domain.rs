@@ -148,6 +148,9 @@ pub struct Principal {
     pub stream_mode: StreamMode,
     /// The virtual key stops working at this instant (UTC). Written as RFC 3339 in the config.
     pub expires_at: Option<OffsetDateTime>,
+    /// What this principal's traffic is for, copied into its receipts: for example the
+    /// entry of the GDPR article 30 record of processing activities it belongs to.
+    pub purpose: Option<String>,
 }
 
 /// Normalized request. Unknown fields stay in `raw` and are forwarded untouched.
@@ -392,8 +395,25 @@ impl fmt::Display for BlockCode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuditKind {
+    /// Written before anything is sent upstream (ADR 0003).
     Decision,
+    /// Written when the request ends.
     Outcome,
+    /// A new signing key: signed with the old key, it carries the new public key.
+    KeyRotation,
+    /// A torn last line was set aside at startup (ADR 0015).
+    Recovery,
+}
+
+impl AuditKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AuditKind::Decision => "decision",
+            AuditKind::Outcome => "outcome",
+            AuditKind::KeyRotation => "key_rotation",
+            AuditKind::Recovery => "recovery",
+        }
+    }
 }
 
 /// One line of the audit log. `hash` and `sig` are computed over the rest (Annex F.8, M5).
@@ -403,7 +423,9 @@ pub struct AuditEntry {
     pub kind: AuditKind,
     /// ISO 8601 UTC with milliseconds.
     pub ts: String,
-    pub request_id: String,
+    /// Absent on entries that belong to no request (key rotation, recovery).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
     /// Strings, integers, booleans, objects and lists only: never floats.
     #[serde(flatten)]
     pub fields: BTreeMap<String, serde_json::Value>,

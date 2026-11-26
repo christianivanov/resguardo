@@ -249,6 +249,7 @@ struct RawPrincipal {
     #[serde(default)]
     scan_limits: BTreeMap<ScanLimit, Action>,
     expires_at: Option<String>,
+    purpose: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -620,6 +621,14 @@ fn validate_principals(
             .and_then(|value| parse_expiry(&location, value, problems));
 
         validate_models(&location, &principal.models, declared_upstreams, problems);
+        if let Some(purpose) = &principal.purpose {
+            let printable = purpose.chars().all(|c| !c.is_control());
+            if purpose.is_empty() || purpose.chars().count() > 200 || !printable {
+                problems.push(format!(
+                    "{location}: purpose must be 1 to 200 characters without control characters"
+                ));
+            }
+        }
         validate_actions(&location, &principal.actions, false, problems);
         validate_scan_limits(
             &format!("{location}: scan_limits."),
@@ -660,6 +669,7 @@ fn validate_principals(
                     limits,
                     actions: principal.actions,
                     scan_limits: principal.scan_limits,
+                    purpose: principal.purpose,
                     stream_mode: principal.stream_mode,
                     expires_at,
                 },
@@ -865,6 +875,20 @@ credential_env = "OPENAI_API_KEY"
             &[BASE, stream, OPENAI_UPSTREAM],
             "[stream] max_event_bytes must be greater than 0",
         );
+    }
+
+    #[test]
+    fn purpose_is_optional_and_checked() {
+        let p = principal("bot", KEY_A, "purpose = \"RAT-12 customer support\"");
+        let config = parse(&[BASE, OPENAI_UPSTREAM, &p]).unwrap();
+        assert_eq!(
+            config.principals[0].principal.purpose.as_deref(),
+            Some("RAT-12 customer support")
+        );
+        let p = principal("bot", KEY_A, "purpose = \"\"");
+        assert_rejected(&[BASE, OPENAI_UPSTREAM, &p], "purpose must be");
+        let p = principal("bot", KEY_A, "purpose = \"a\\nb\"");
+        assert_rejected(&[BASE, OPENAI_UPSTREAM, &p], "purpose must be");
     }
 
     #[test]

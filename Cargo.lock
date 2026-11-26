@@ -1084,6 +1084,15 @@ dependencies = [
 [[package]]
 name = "resguardo-audit"
 version = "0.0.0"
+dependencies = [
+ "aws-lc-rs",
+ "base64",
+ "resguardo-core",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "zeroize",
+]
 
 [[package]]
 name = "resguardo-core"
