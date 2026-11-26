@@ -308,20 +308,31 @@ fn validate_server(server: &ServerConfig, problems: &mut Vec<String>, warnings: 
 }
 
 fn validate_scan(scan: &ScanConfig, problems: &mut Vec<String>) {
-    if scan.max_decode_depth > 8 {
-        problems.push("[scan] max_decode_depth must be at most 8".into());
-    }
-    if scan.max_derived_bytes == 0 {
-        problems.push("[scan] max_derived_bytes must be greater than 0".into());
-    }
-    if !(scan.entropy_threshold.is_finite()
-        && scan.entropy_threshold > 0.0
-        && scan.entropy_threshold <= 8.0)
-    {
-        problems.push("[scan] entropy_threshold must be between 0 and 8 bits per character".into());
-    }
-    if scan.entropy_min_len < 8 {
-        problems.push("[scan] entropy_min_len must be at least 8".into());
+    problems.extend(scan.problems());
+}
+
+impl ScanConfig {
+    /// Every reason these values are not acceptable; empty if they are. Public so the scanner
+    /// can refuse values that did not come through [`Config::from_toml_str`].
+    pub fn problems(&self) -> Vec<String> {
+        let mut problems = Vec::new();
+        if self.max_decode_depth > 8 {
+            problems.push("[scan] max_decode_depth must be at most 8".into());
+        }
+        if self.max_derived_bytes == 0 {
+            problems.push("[scan] max_derived_bytes must be greater than 0".into());
+        }
+        if !(self.entropy_threshold.is_finite()
+            && self.entropy_threshold > 0.0
+            && self.entropy_threshold <= 8.0)
+        {
+            problems
+                .push("[scan] entropy_threshold must be between 0 and 8 bits per character".into());
+        }
+        if self.entropy_min_len < 8 {
+            problems.push("[scan] entropy_min_len must be at least 8".into());
+        }
+        problems
     }
 }
 

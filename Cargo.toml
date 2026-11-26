@@ -19,9 +19,12 @@ resguardo-egress = { path = "crates/resguardo-egress", version = "0.0.0" }
 resguardo-mock-upstream = { path = "tools/mock-upstream", version = "0.0.0" }
 resguardo-proto = { path = "crates/resguardo-proto", version = "0.0.0" }
 
-# External crates. Versions checked on crates.io on 2026-11-25.
+# External crates. Versions checked on crates.io on 2026-11-25 (base64, regex and
+# unicode-normalization on 2026-11-26).
 anyhow = "1.0.105"
 axum = "0.8.9"
+# Without `simd-unsafe`, its only source of `unsafe` (hyper-util still enables it in the binary).
+base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 clap = { version = "4.6.10", features = ["derive"] }
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 getrandom = "0.4.3"
@@ -35,6 +38,7 @@ thiserror = "2.0.21"
 time = { version = "0.3.55", features = ["parsing"] }
 toml = "1.2.3"
 tokio = { version = "1.54.1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+unicode-normalization = "0.1.26"
 url = "2.5.9"
 uuid = { version = "1.29.3", default-features = false, features = ["std"] }
 zeroize = "1.9.2"
