@@ -26,7 +26,7 @@ Every prompt your application sends to a model provider leaves your network. It 
 Resguardo is a single Rust binary that sits between your applications and the OpenAI and Anthropic APIs, or any OpenAI-compatible server (LiteLLM, vLLM, Ollama). Applications keep their official SDKs: change the base URL and the key, nothing else.
 
 > [!WARNING]
-> **Pre-alpha.** The proxy works end to end with the official SDKs against a mock provider: it scans every request, redacts or blocks what policy says, and forwards the rest byte for byte. The signed audit log is not built yet, so Resguardo refuses real providers for now.
+> **Pre-alpha.** The proxy works end to end with the official SDKs, tested against a mock provider: it scans every request and response, redacts or blocks what policy says, forwards the rest byte for byte, and signs a receipt for every decision. The accuracy corpus, the benchmark and the exfiltration lab (M6) are not published yet.
 
 ## Highlights
 
@@ -65,7 +65,7 @@ client.chat.completions.create(
 )
 ```
 
-The provider receives `Mi DNI es [REDACTED:es_id:1]`, and a signed receipt records the decision. *(Receipts arrive in M5.)*
+The provider receives `Mi DNI es [REDACTED:es_id:1]`, and a signed receipt records the decision. `resguardo verify-log` checks every receipt with the public key.
 
 ## Try it
 
@@ -82,6 +82,7 @@ ok   openai: a DNI reaches the provider redacted  (echo: Mi DNI es [REDACTED:es_
 ok   openai: an AWS key -> PermissionDeniedError
 ...
 ok   no virtual key reached the upstream
+ok   audit log verifies: OK (30 entries)
 ```
 
 One command starts a mock provider and Resguardo, then calls them with the official OpenAI and Anthropic SDKs. It needs Rust, a C compiler and [uv](https://docs.astral.sh/uv/). No API key is needed, and no real provider is contacted. For a step-by-step walkthrough, see [Getting started](docs/GETTING_STARTED.md).
@@ -95,7 +96,7 @@ One command starts a mock provider and Resguardo, then calls them with the offic
 | M2 | Detectors: secrets, invisible text, de-obfuscation, `resguardo scan` | ✅ |
 | M3 | Spanish ids, IBAN, cards, phones and email; policy and redaction | ✅ |
 | M4 | Streaming, response scanning, image and link controls, fuzzing | ✅ |
-| M5 | Signed audit log and `resguardo verify-log` | ⏳ |
+| M5 | Signed audit log, `resguardo init` and `resguardo verify-log` | ✅ |
 | M6 | Accuracy corpus, benchmark, exfiltration lab, v0.1.0 | ⏳ February 2027 |
 
 ## Limits

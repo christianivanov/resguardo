@@ -1,6 +1,6 @@
 # Getting started
 
-Resguardo is pre-alpha. Until the signed audit log (M5) exists, `resguardo run` only accepts **local** upstreams, so everything below runs against the mock provider in `tools/mock-upstream`. No real API is ever called and no API key is needed.
+Resguardo is pre-alpha. Everything below runs against the mock provider in `tools/mock-upstream`: no real API is called and no API key is needed. To use a real provider, point an `[[upstream]]` at it with `https://` and its credential.
 
 ## Requirements
 
@@ -91,14 +91,22 @@ warning: [[upstream]] #1 (openai): plain HTTP to http://127.0.0.1:9000 (allow_in
 resguardo.toml: OK (1 upstream(s), 1 principal(s))
 ```
 
-**5. Start Resguardo.**
+**5. Create the signing key pair.** Every authenticated request leaves two signed entries in the audit log, and Resguardo does not start without the key that signs them. `init` never replaces an existing key.
+
+```console
+$ resguardo init --config resguardo.toml
+Signing key: signing.key (owner-only). Public key: signing.pub. Give the public key to auditors:
+ed25519:<43 Base64url characters>
+```
+
+**6. Start Resguardo.**
 
 ```console
 $ resguardo run --config resguardo.toml &
 resguardo listening on http://127.0.0.1:8787
 ```
 
-**6. Call it as if it were OpenAI.** Use the virtual key from step 3.
+**7. Call it as if it were OpenAI.** Use the virtual key from step 3.
 
 ```console
 $ curl -s http://127.0.0.1:8787/v1/chat/completions \
@@ -116,11 +124,22 @@ $ curl -s http://127.0.0.1:8787/v1/chat/completions \
 {"error":{"code":"MODEL_NOT_ALLOWED","message":"this model is not allowed for this key","request_id":"01a213b0-…","type":"resguardo_policy_violation"}}
 ```
 
-**7. See what reached the "provider".** Only the configured credential, never the virtual key:
+**8. See what reached the "provider".** Only the configured credential, never the virtual key:
 
 ```console
 $ curl -s http://127.0.0.1:9000/__mock/requests
 ```
+
+**9. Verify the receipts.** Anyone with the public key can check that no entry was changed, removed or reordered. The log holds metadata only: principal, model, sizes, hashes, finding classes and counts, decision, status and latencies, never prompt content.
+
+```console
+$ resguardo verify-log audit.jsonl --pubkey signing.pub
+audit.jsonl: OK (4 entries)
+$ head -1 audit.jsonl
+{"body_bytes":75,"body_sha256":"…","decision":"allow","findings":{},"flags":{},"hash":"…","kind":"decision","model":"gpt-4.1-mini","prev":"000…","principal":"demo-app","provider":"openai","request_id":"…","seq":1,"sig":"…","stream":false,"ts":"…"}
+```
+
+`verify-log` exits with 1 and names the first line that fails and why (`hash`, `sig`, `prev`, `seq` or `format`). To replace the key pair, `resguardo init --rotate-key` records the rotation in the log, signed with the old key; the first public key still verifies the whole log. If the receipt for a request cannot be written (a full disk, say), the request is refused with `503 AUDIT_UNAVAILABLE` and nothing leaves.
 
 Stop both with `kill %1 %2`. Resguardo finishes the requests in flight on Ctrl-C or `SIGTERM`.
 
@@ -186,6 +205,7 @@ Resguardo answers in the error shape of the API that was called, so each SDK rai
 | `BODY_TOO_LARGE` | 413 | Body or message count over the key's limit |
 | `RATE_LIMITED` | 429 | Over the key's requests per minute; `retry-after` says when to retry |
 | `SCAN_ERROR` | 500 | Scanning or redaction failed; nothing was sent |
+| `AUDIT_UNAVAILABLE` | 503 | The signed receipt could not be written; nothing was sent |
 | `UPSTREAM_REDIRECT` / `UPSTREAM_ERROR` | 502 | The provider redirected, failed or could not be reached |
 
 Errors from the provider itself are passed through unchanged. Every response carries `x-resguardo-request-id` and `x-resguardo-decision` (`allow`, `redact` or `block`).
