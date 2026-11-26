@@ -1129,6 +1129,9 @@ dependencies = [
 [[package]]
 name = "resguardo-policy"
 version = "0.0.0"
+dependencies = [
+ "resguardo-core",
+]
 
 [[package]]
 name = "resguardo-proto"
