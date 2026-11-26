@@ -8,7 +8,7 @@ One process, split into crates whose dependencies are enforced by `cargo deny` (
 
 ```text
 resguardo (binary) ─┬─ resguardo-core      domain types, configuration, virtual keys     ✅
-                    ├─ resguardo-proto     strict parsing, text extraction; SSE (M4)     ✅
+                    ├─ resguardo-proto     strict parsing, redaction, SSE, response controls ✅
                     ├─ resguardo-egress    allowlist, credentials, TLS                   ✅
                     ├─ resguardo-scan      detectors (pure: no I/O, no clock)            M2
                     ├─ resguardo-policy    decisions (pure)                              M3
@@ -32,6 +32,7 @@ Each step fails closed: any error ends the request with an error response, and n
 8. **Scan, policy and redaction.** Every text is scanned on a blocking thread, policy takes one decision ([ADR 0012](adr/0012-policy-decision.md)), and a block answers `403 SENSITIVE_DATA` with the class, never the value. Redaction rewrites only the strings that hold a redacted value, and the result is checked against the strict parser before it leaves ([ADR 0013](adr/0013-redaction.md)). Any scanning or redaction error is `500 SCAN_ERROR`, and nothing is sent.
 9. **Receipt.** *M5.* The signed decision entry is written before anything leaves.
 10. **Egress.** To the configured upstream only, with the real credential.
+11. **Response.** Scanned before the application sees it: a whole response string by string, a stream event by event with a 256-byte window per content block. A blocking finding stops it (`403`, or `event: error` in a stream); remote images and links outside the allowed hosts are removed ([ADR 0014](adr/0014-streaming-and-response-controls.md)).
 
 ## Security controls in code today
 

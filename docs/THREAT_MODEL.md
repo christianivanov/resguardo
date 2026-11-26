@@ -102,6 +102,8 @@ This is the biggest difference from the target architecture, where a compromised
 - Slow clients that send headers very slowly: there is no header read timeout yet.
 - Images, audio and PDFs **inside** a chat request (base64 or `data:` URLs) are forwarded without scanning; their count is recorded. Text hidden in them is not detected (ADR 0007).
 - Numbers in the JSON body are not scanned: a card number sent as a JSON number is not detected.
+- Response controls cover inline Markdown images and links only: reference-style images (`![x][ref]`), HTML `<img>` and bare URLs are not removed, and a link held for more than 512 bytes without closing is released unchanged (ADR 0014).
+- With `stream_mode = "passthrough_abort"`, the part of a secret sent before the event that completes it reaches the application (it does not leave the network); `buffer` mode avoids it.
 - Detector gaps listed in ADR 0008, 0010 and 0011, for example: values glued to other letters or digits (`DNI12345678Z`); encoded fragments under 12 Base64 characters or 18 hex digits (less than 9 bytes); Base64 split across lines; partial URL-encoding; addresses written as `name [at] example [dot] com`.
 - Restoring redacted values in responses.
 - Anything once the host is compromised.

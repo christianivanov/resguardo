@@ -142,7 +142,15 @@ client = Anthropic(base_url="http://127.0.0.1:8787", api_key="rsg_...")  # or au
 client.messages.create(model="claude-sonnet-5-5", max_tokens=256, messages=[{"role": "user", "content": "hola"}])
 ```
 
-Claude Code works the same way through `ANTHROPIC_BASE_URL`; it needs streaming, which arrives in M4. See [running Claude Code through Resguardo](research/claude-code-gateway.md).
+Streaming works with both SDKs (`stream=True`, `messages.stream(...)`). Claude Code works the same way through `ANTHROPIC_BASE_URL`; see [running Claude Code through Resguardo](research/claude-code-gateway.md).
+
+## Responses and streaming
+
+Responses are scanned too ([ADR 0014](adr/0014-streaming-and-response-controls.md)):
+
+- A secret or another class whose action is `block` stops the response. A whole response becomes a `403 SENSITIVE_DATA`; a stream gets an `event: error` with the same JSON and is closed. The SDKs raise their usual exception (`APIError`, `APIStatusError`).
+- Remote Markdown images (`![x](https://...)`) become `[image removed]`, and links to hosts outside `[response] allowed_link_hosts` keep only their text. After a prompt injection, an image is the usual way to send data out: the client loads its URL, with the data in it, without a click.
+- With `stream_mode = "passthrough_abort"` (the default), events are sent as soon as they are scanned, so the first part of a secret split across events reaches the application before the stream is cut. With `stream_mode = "buffer"`, events wait for the end of a sentence (or `buffer_flush_bytes`), and nothing of it is released.
 
 ## Scanning a text
 
@@ -170,10 +178,10 @@ Resguardo answers in the error shape of the API that was called, so each SDK rai
 
 | Code | HTTP | When |
 | --- | --- | --- |
-| `INVALID_REQUEST` | 400 | Malformed JSON, duplicate keys, unknown query parameters, compressed body, streaming (until M4) |
+| `INVALID_REQUEST` | 400 | Malformed JSON, duplicate keys, unknown query parameters, compressed body |
 | `UNKNOWN_KEY` / `KEY_EXPIRED` | 401 | Missing, unknown, ambiguous or expired virtual key |
 | `MODEL_NOT_ALLOWED` | 403 | Provider or model outside the key's list |
-| `SENSITIVE_DATA` | 403 | A finding whose action is `block` (the message names its class, never the value), or encoded content too deep to inspect |
+| `SENSITIVE_DATA` | 403 | A finding whose action is `block`, in the request or the response (the message names its class, never the value), or encoded content too deep to inspect |
 | `NOT_FOUND` | 404 | Any route other than `POST /v1/chat/completions` and `POST /v1/messages` |
 | `BODY_TOO_LARGE` | 413 | Body or message count over the key's limit |
 | `RATE_LIMITED` | 429 | Over the key's requests per minute; `retry-after` says when to retry |
