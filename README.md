@@ -211,7 +211,7 @@ The full list, with what covers each limit later, is in the [threat model](docs/
 
 ## Contributing
 
-Not open to outside contributions yet. Commits require a [DCO](https://developercertificate.org/) sign-off (`git commit -s`).
+Not open to outside contributions yet. Commits require a [DCO](https://developercertificate.org/) sign-off (`git commit -s`). To report a vulnerability, see [SECURITY.md](SECURITY.md): privately, please.
 
 ## License
 
