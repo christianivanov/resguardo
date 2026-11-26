@@ -47,11 +47,11 @@ allow-wildcard-paths = true
 # on the banned crate directly; in particular resguardo-egress must never see scanning
 # or policy, so the egress side can become its own process later.
 deny = [
-    { crate = "resguardo-scan", wrappers = ["resguardo"] },
+    { crate = "resguardo-scan", wrappers = ["resguardo", "resguardo-bench"] },
     { crate = "resguardo-policy", wrappers = ["resguardo"] },
     { crate = "resguardo-proto", wrappers = ["resguardo"] },
     { crate = "resguardo-egress", wrappers = ["resguardo"] },
-    { crate = "resguardo-audit", wrappers = ["resguardo", "resguardo-egress"] },
+    { crate = "resguardo-audit", wrappers = ["resguardo", "resguardo-bench", "resguardo-egress"] },
     # ADR 0006: TLS uses aws-lc-rs. A second crypto provider must not slip in.
     { crate = "ring", reason = "ADR 0006: rustls uses aws-lc-rs" },
 ]

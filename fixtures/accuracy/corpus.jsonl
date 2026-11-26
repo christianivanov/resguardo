@@ -1,0 +1,406 @@
+{"text": "El servidor 10.113.8.160 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "Nº de pedido: 4534165382", "expect": [], "allow": [], "group": "order"}
+{"text": "Cuenta ES68 9665 5371 9315 9648 5407", "expect": [], "allow": [], "group": "wrong_iban"}
+{"text": "Expediente 2026/02752", "expect": [], "allow": [], "group": "case"}
+{"text": "Ref. B-2395795", "expect": [], "allow": [], "group": "invoice"}
+{"text": "ISBN 978-84-9976-168-0", "expect": [], "allow": [], "group": "isbn"}
+{"text": "El servidor 10.34.152.166 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "Duración 1h 34min", "expect": [], "allow": [], "group": "time"}
+{"text": "La reunión es el 18/09/2026 a las 9:30.", "expect": [], "allow": [], "group": "date"}
+{"text": "Recuerda revisar la configuración antes de desplegar.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Tarjeta 3717 6956 9144 423", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Corregido en el commit 856b66c90e4ebdd830c1a4c4e72348111e014856.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "El DNI 31114454W no es válido.", "expect": [], "allow": [], "group": "wrong_dni"}
+{"text": "El servidor 10.239.112.68 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "Corregido en el commit 810b90eb9283bcf53a2f60090e5d27f5e9749ce8.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "La reunión es el 18/06/2026 a las 17:00.", "expect": [], "allow": [], "group": "date"}
+{"text": "Duración 4h 56min", "expect": [], "allow": [], "group": "time"}
+{"text": "Expediente 2026/42384", "expect": [], "allow": [], "group": "case"}
+{"text": "Actualiza a la versión 7.4.20", "expect": [], "allow": [], "group": "version"}
+{"text": "Tarjeta 5163 3055 7526 2015", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "La entrega se retrasará por la huelga de transportes.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Su pedido PED-2026-072917 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Nº de pedido: 4766221128", "expect": [], "allow": [], "group": "order"}
+{"text": "Actualiza a la versión 4.0.44", "expect": [], "allow": [], "group": "version"}
+{"text": "Tarjeta 3715 9879 9267 989", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Seguimiento: ES7957013347191", "expect": [], "allow": ["secret_candidate"], "group": "tracking"}
+{"text": "Ref. B-0407523", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Cuenta ES64 4646 3405 6915 0148 8776", "expect": [], "allow": [], "group": "wrong_iban"}
+{"text": "Duración 2h 56min", "expect": [], "allow": [], "group": "time"}
+{"text": "ISBN 978-84-0208-334-7", "expect": [], "allow": [], "group": "isbn"}
+{"text": "Enviar a CP 28911, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Nº de pedido: 7888089548", "expect": [], "allow": [], "group": "order"}
+{"text": "Corregido en el commit af5fad4e05d311f04badbfb8e9323fba7718f7ff.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "Seguimiento: ES1730047145891", "expect": [], "allow": ["secret_candidate"], "group": "tracking"}
+{"text": "Actualiza a la versión 4.4.19", "expect": [], "allow": [], "group": "version"}
+{"text": "La reunión es el 15/09/2026 a las 19:30.", "expect": [], "allow": [], "group": "date"}
+{"text": "Tarjeta 5207 5479 1264 2072", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Enviar a CP 41970, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Expediente 2026/83265", "expect": [], "allow": [], "group": "case"}
+{"text": "El DNI 21709801J no es válido.", "expect": [], "allow": [], "group": "wrong_dni"}
+{"text": "Nº de pedido: 8989885108", "expect": [], "allow": [], "group": "order"}
+{"text": "Duración 7h 54min", "expect": [], "allow": [], "group": "time"}
+{"text": "ISBN 978-84-9880-033-4", "expect": [], "allow": [], "group": "isbn"}
+{"text": "Importe total: 5.475,73 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "Importe total: 83.803,96 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "Importe total: 92.193,92 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "Seguimiento: ES3407461294548", "expect": [], "allow": ["secret_candidate"], "group": "tracking"}
+{"text": "Cuenta ES76 5102 3990 0230 7094 9805", "expect": [], "allow": [], "group": "wrong_iban"}
+{"text": "Matrícula 8284 PMM", "expect": [], "allow": [], "group": "plate"}
+{"text": "La reunión es el 18/03/2026 a las 9:30.", "expect": [], "allow": [], "group": "date"}
+{"text": "Corregido en el commit 9f6ebf66bf8d17c19b71a2779096007022ed4eb7.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "Seguimiento: ES1558738599436", "expect": [], "allow": ["secret_candidate"], "group": "tracking"}
+{"text": "Actualiza a la versión 6.10.41", "expect": [], "allow": [], "group": "version"}
+{"text": "El servidor 10.149.222.133 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "Importe total: 89.452,88 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "Enviar a CP 29573, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Pedido 05809709 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Expediente 2026/42837", "expect": [], "allow": [], "group": "case"}
+{"text": "Su pedido PED-2026-891890 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Corregido en el commit 8182c3fd7901a794d0200bf8e9d8c560e9ceb154.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "Ref. B-1930921", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Cuenta ES59 9760 0030 8183 1230 1175", "expect": [], "allow": [], "group": "wrong_iban"}
+{"text": "Adjunto la factura FAC-2026/3349 del mes de noviembre.", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Enviar a CP 29992, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Seguimiento: ES3765321812287", "expect": [], "allow": ["secret_candidate"], "group": "tracking"}
+{"text": "Adjunto la factura FAC-2026/5846 del mes de noviembre.", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Ref. B-6193534", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Tarjeta 4843 5949 8697 2582", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Ref. B-7276651", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Duración 8h 55min", "expect": [], "allow": [], "group": "time"}
+{"text": "Su pedido PED-2026-135761 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "La reunión es el 19/01/2026 a las 8:00.", "expect": [], "allow": [], "group": "date"}
+{"text": "Pedido 12327936 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Su pedido PED-2026-118534 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Gracias por contactar con nosotros, le responderemos en breve.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Ref. B-7559543", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Enviar a CP 08312, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "ISBN 978-84-1177-761-3", "expect": [], "allow": [], "group": "isbn"}
+{"text": "Actualiza a la versión 6.5.16", "expect": [], "allow": [], "group": "version"}
+{"text": "Por favor, confirme su asistencia antes del viernes.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Recuerda revisar la configuración antes de desplegar.", "expect": [], "allow": [], "group": "prose"}
+{"text": "El DNI 70777013K no es válido.", "expect": [], "allow": [], "group": "wrong_dni"}
+{"text": "El servidor 10.168.86.139 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "Duración 8h 19min", "expect": [], "allow": [], "group": "time"}
+{"text": "Duración 3h 21min", "expect": [], "allow": [], "group": "time"}
+{"text": "Adjunto la factura FAC-2026/3489 del mes de noviembre.", "expect": [], "allow": [], "group": "invoice"}
+{"text": "El servidor 10.160.167.124 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "El informe trimestral muestra un crecimiento del 4,5 % en ventas.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Expediente 2026/05379", "expect": [], "allow": [], "group": "case"}
+{"text": "La reunión es el 08/04/2026 a las 11:00.", "expect": [], "allow": [], "group": "date"}
+{"text": "Su pedido PED-2026-170475 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Pedido 11693912 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Duración 7h 12min", "expect": [], "allow": [], "group": "time"}
+{"text": "Tarjeta 3720 1118 0373 019", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "ISBN 978-84-1263-870-7", "expect": [], "allow": [], "group": "isbn"}
+{"text": "Recuerda revisar la configuración antes de desplegar.", "expect": [], "allow": [], "group": "prose"}
+{"text": "ISBN 978-84-9953-913-6", "expect": [], "allow": [], "group": "isbn"}
+{"text": "Actualiza a la versión 3.17.44", "expect": [], "allow": [], "group": "version"}
+{"text": "Importe total: 86.092,70 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "Corregido en el commit 3565e6eb75ced61e5b09c19c118bb2ea659673b7.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "Tarjeta 4623 0993 8653 3881", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Identificador de sesión 6f1d1b8c-c543-460a-add7-5316e67288a9", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "Tarjeta 4256 1359 0438 6735", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Actualiza a la versión 8.1.16", "expect": [], "allow": [], "group": "version"}
+{"text": "El DNI 56281047S no es válido.", "expect": [], "allow": [], "group": "wrong_dni"}
+{"text": "Identificador de sesión 83e5cae6-df89-469a-a784-c74e1a45db59", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "El DNI 55575613S no es válido.", "expect": [], "allow": [], "group": "wrong_dni"}
+{"text": "Tarjeta 5137 4381 0996 3288", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Cuenta ES08 4315 2699 8937 4596 4479", "expect": [], "allow": [], "group": "wrong_iban"}
+{"text": "Expediente 2026/73218", "expect": [], "allow": [], "group": "case"}
+{"text": "Su pedido PED-2026-577525 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Actualiza a la versión 6.4.24", "expect": [], "allow": [], "group": "version"}
+{"text": "El servidor 10.20.15.230 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "Pedido 14393283 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Expediente 2026/44001", "expect": [], "allow": [], "group": "case"}
+{"text": "Tarjeta 3734 9263 5172 017", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "La reunión es el 27/10/2026 a las 8:30.", "expect": [], "allow": [], "group": "date"}
+{"text": "La reunión es el 14/12/2026 a las 17:00.", "expect": [], "allow": [], "group": "date"}
+{"text": "La reunión es el 13/11/2026 a las 15:30.", "expect": [], "allow": [], "group": "date"}
+{"text": "Nº de pedido: 2823013615", "expect": [], "allow": [], "group": "order"}
+{"text": "Corregido en el commit 9ae7ba21ce69a4aa1d16b9373650028d445f5c51.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "Tarjeta 3768 1876 2035 055", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "ISBN 978-84-5903-985-7", "expect": [], "allow": [], "group": "isbn"}
+{"text": "Identificador de sesión baa3c3ff-bf29-44c5-acdd-a795e872d30b", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "Identificador de sesión 40aaf981-4511-4e57-a17d-f65f65707037", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "Ref. B-7219666", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Expediente 2026/24137", "expect": [], "allow": [], "group": "case"}
+{"text": "Adjunto la factura FAC-2026/0153 del mes de noviembre.", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Pedido 53219600 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Ref. B-4616987", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Corregido en el commit 92dece051ecbfba0526e4e2bc839b17c49b45c58.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "Por favor, confirme su asistencia antes del viernes.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Adjunto la factura FAC-2026/7631 del mes de noviembre.", "expect": [], "allow": [], "group": "invoice"}
+{"text": "La reunión es el 05/11/2026 a las 8:30.", "expect": [], "allow": [], "group": "date"}
+{"text": "Seguimiento: ES7750910033642", "expect": [], "allow": ["secret_candidate"], "group": "tracking"}
+{"text": "Nº de pedido: 3575814761", "expect": [], "allow": [], "group": "order"}
+{"text": "Corregido en el commit 40fe1568aa938a6c551dd26082e1bdc23f28709f.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "Pedido 00325837 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "El servidor 10.6.211.157 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "La reunión es el 13/04/2026 a las 15:30.", "expect": [], "allow": [], "group": "date"}
+{"text": "Pedido 38853201 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Duración 1h 19min", "expect": [], "allow": [], "group": "time"}
+{"text": "La reunión es el 28/07/2026 a las 10:30.", "expect": [], "allow": [], "group": "date"}
+{"text": "Cuenta ES92 8683 4731 0836 9130 0128", "expect": [], "allow": [], "group": "wrong_iban"}
+{"text": "El servidor 10.78.91.96 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "Expediente 2026/60785", "expect": [], "allow": [], "group": "case"}
+{"text": "Recuerda revisar la configuración antes de desplegar.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Ref. B-8023977", "expect": [], "allow": [], "group": "invoice"}
+{"text": "El servidor 10.87.37.149 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "Matrícula 6508 XNG", "expect": [], "allow": [], "group": "plate"}
+{"text": "Matrícula 3631 NZX", "expect": [], "allow": [], "group": "plate"}
+{"text": "Duración 4h 11min", "expect": [], "allow": [], "group": "time"}
+{"text": "Pedido 76936889 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Enviar a CP 08848, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "El informe trimestral muestra un crecimiento del 4,5 % en ventas.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Importe total: 84.765,42 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "El DNI 38913491J no es válido.", "expect": [], "allow": [], "group": "wrong_dni"}
+{"text": "Nº de pedido: 0217500702", "expect": [], "allow": [], "group": "order"}
+{"text": "Tarjeta 5213 5354 1102 5404", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "ISBN 978-84-4992-256-7", "expect": [], "allow": [], "group": "isbn"}
+{"text": "Nº de pedido: 4125145379", "expect": [], "allow": [], "group": "order"}
+{"text": "Enviar a CP 29066, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Expediente 2026/97699", "expect": [], "allow": [], "group": "case"}
+{"text": "El DNI 76858950E no es válido.", "expect": [], "allow": [], "group": "wrong_dni"}
+{"text": "Identificador de sesión 457cde87-7f13-48d6-a701-c668bf6da6ee", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "La reunión es el 10/06/2026 a las 14:30.", "expect": [], "allow": [], "group": "date"}
+{"text": "Ref. B-7645191", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Duración 2h 27min", "expect": [], "allow": [], "group": "time"}
+{"text": "Importe total: 80.492,22 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "Ref. B-7835424", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Su pedido PED-2026-377478 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Su pedido PED-2026-186665 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Duración 3h 3min", "expect": [], "allow": [], "group": "time"}
+{"text": "Nº de pedido: 4842921879", "expect": [], "allow": [], "group": "order"}
+{"text": "Identificador de sesión af3d6114-3cee-4060-adeb-7e4845d8f311", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "ISBN 978-84-5354-888-0", "expect": [], "allow": [], "group": "isbn"}
+{"text": "Matrícula 5084 KVX", "expect": [], "allow": [], "group": "plate"}
+{"text": "Adjunto la factura FAC-2026/0837 del mes de noviembre.", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Identificador de sesión a094f972-586f-4940-aa95-e085d96ca02f", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "Matrícula 8656 GZN", "expect": [], "allow": [], "group": "plate"}
+{"text": "Corregido en el commit 97f494f93fb4afddf4dabe30de9a8cabf54c3085.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "Actualiza a la versión 4.10.17", "expect": [], "allow": [], "group": "version"}
+{"text": "Matrícula 9398 VXP", "expect": [], "allow": [], "group": "plate"}
+{"text": "Cuenta ES83 1658 7906 6123 9520 6547", "expect": [], "allow": [], "group": "wrong_iban"}
+{"text": "Actualiza a la versión 3.3.43", "expect": [], "allow": [], "group": "version"}
+{"text": "Actualiza a la versión 3.16.43", "expect": [], "allow": [], "group": "version"}
+{"text": "El servidor 10.19.39.79 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "Seguimiento: ES3579179844174", "expect": [], "allow": ["secret_candidate"], "group": "tracking"}
+{"text": "Matrícula 4808 KCJ", "expect": [], "allow": [], "group": "plate"}
+{"text": "Adjunto la factura FAC-2026/0312 del mes de noviembre.", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Matrícula 5287 JKW", "expect": [], "allow": [], "group": "plate"}
+{"text": "Tarjeta 5172 9979 2072 5164", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Cuenta ES53 4540 3661 1362 7767 3728", "expect": [], "allow": [], "group": "wrong_iban"}
+{"text": "Identificador de sesión d8f7b5d2-1f64-4d46-afd3-ca5759bb5539", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "Gracias por contactar con nosotros, le responderemos en breve.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Ref. B-1350334", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Pedido 11358695 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Actualiza a la versión 6.15.38", "expect": [], "allow": [], "group": "version"}
+{"text": "Duración 3h 23min", "expect": [], "allow": [], "group": "time"}
+{"text": "Identificador de sesión 1952153c-76cf-4875-a116-e923fb7dabe1", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "Importe total: 14.848,36 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "Recuerda revisar la configuración antes de desplegar.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Importe total: 82.683,05 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "Corregido en el commit f08e297f1e5d472cb4a351d27c0157a6acf80197.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "Importe total: 49.230,22 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "La reunión es el 20/09/2026 a las 11:00.", "expect": [], "allow": [], "group": "date"}
+{"text": "Expediente 2026/05396", "expect": [], "allow": [], "group": "case"}
+{"text": "Seguimiento: ES0903586991992", "expect": [], "allow": ["secret_candidate"], "group": "tracking"}
+{"text": "Nº de pedido: 6196712648", "expect": [], "allow": [], "group": "order"}
+{"text": "El servidor 10.200.254.114 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "Corregido en el commit eaacc58ab1f6d00a6d194d969991ae993cc3444e.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "ISBN 978-84-4215-102-1", "expect": [], "allow": [], "group": "isbn"}
+{"text": "Gracias por contactar con nosotros, le responderemos en breve.", "expect": [], "allow": [], "group": "prose"}
+{"text": "La reunión es el 18/05/2026 a las 10:30.", "expect": [], "allow": [], "group": "date"}
+{"text": "Seguimiento: ES7669574442365", "expect": [], "allow": ["secret_candidate"], "group": "tracking"}
+{"text": "Identificador de sesión 0382f9fc-3e7f-468a-a528-5aaa70e8001d", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "Su pedido PED-2026-745825 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Actualiza a la versión 1.3.11", "expect": [], "allow": [], "group": "version"}
+{"text": "Importe total: 12.698,62 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "Duración 2h 59min", "expect": [], "allow": [], "group": "time"}
+{"text": "El DNI 64730528D no es válido.", "expect": [], "allow": [], "group": "wrong_dni"}
+{"text": "Cuenta ES10 3618 7826 9586 5394 8976", "expect": [], "allow": [], "group": "wrong_iban"}
+{"text": "Pedido 38171829 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Adjunto la factura FAC-2026/4163 del mes de noviembre.", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Expediente 2026/96001", "expect": [], "allow": [], "group": "case"}
+{"text": "Actualiza a la versión 1.3.13", "expect": [], "allow": [], "group": "version"}
+{"text": "Nº de pedido: 9742901583", "expect": [], "allow": [], "group": "order"}
+{"text": "La entrega se retrasará por la huelga de transportes.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Nº de pedido: 4759596637", "expect": [], "allow": [], "group": "order"}
+{"text": "Recuerda revisar la configuración antes de desplegar.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Tarjeta 4784 8569 5722 0734", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Adjunto la factura FAC-2026/2161 del mes de noviembre.", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Expediente 2026/94517", "expect": [], "allow": [], "group": "case"}
+{"text": "Su pedido PED-2026-226902 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Identificador de sesión 2476b8c9-b7b6-433d-ae63-c0fbfb65197a", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "La reunión es el 13/04/2026 a las 11:00.", "expect": [], "allow": [], "group": "date"}
+{"text": "Enviar a CP 28463, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Enviar a CP 28549, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Matrícula 5709 KKY", "expect": [], "allow": [], "group": "plate"}
+{"text": "Importe total: 43.189,93 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "Adjunto la factura FAC-2026/7278 del mes de noviembre.", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Cuenta ES66 2441 7325 9069 1914 6529", "expect": [], "allow": [], "group": "wrong_iban"}
+{"text": "Pedido 36401699 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Actualiza a la versión 8.18.18", "expect": [], "allow": [], "group": "version"}
+{"text": "El informe trimestral muestra un crecimiento del 4,5 % en ventas.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Su pedido PED-2026-378398 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Duración 6h 47min", "expect": [], "allow": [], "group": "time"}
+{"text": "Expediente 2026/60048", "expect": [], "allow": [], "group": "case"}
+{"text": "Actualiza a la versión 1.0.15", "expect": [], "allow": [], "group": "version"}
+{"text": "Actualiza a la versión 4.8.38", "expect": [], "allow": [], "group": "version"}
+{"text": "Enviar a CP 28763, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Identificador de sesión bf128ac9-db23-45e9-aaed-908a58cb642c", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "Matrícula 6327 VXW", "expect": [], "allow": [], "group": "plate"}
+{"text": "Pedido 54894871 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Ref. B-6639753", "expect": [], "allow": [], "group": "invoice"}
+{"text": "Cuenta ES69 6025 2363 1705 9067 9828", "expect": [], "allow": [], "group": "wrong_iban"}
+{"text": "Su pedido PED-2026-393716 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Duración 4h 10min", "expect": [], "allow": [], "group": "time"}
+{"text": "Recuerda revisar la configuración antes de desplegar.", "expect": [], "allow": [], "group": "prose"}
+{"text": "El DNI 20650888Z no es válido.", "expect": [], "allow": [], "group": "wrong_dni"}
+{"text": "Enviar a CP 46376, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Importe total: 12.847,87 €", "expect": [], "allow": [], "group": "amount"}
+{"text": "Pedido 01191071 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Matrícula 0089 TMY", "expect": [], "allow": [], "group": "plate"}
+{"text": "Actualiza a la versión 8.7.11", "expect": [], "allow": [], "group": "version"}
+{"text": "Enviar a CP 29273, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Su pedido PED-2026-879144 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Pedido 84497063 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "Su pedido PED-2026-546645 está en reparto.", "expect": [], "allow": [], "group": "order"}
+{"text": "Corregido en el commit fb50ed42606b670889f2ecc46e0eaad85df345fd.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "Enviar a CP 08815, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Seguimiento: ES5907900105365", "expect": [], "allow": ["secret_candidate"], "group": "tracking"}
+{"text": "Corregido en el commit 6d91b56635dfea6e9ddbdbba1af894d56706295b.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "Tarjeta 5150 4500 7354 1935", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Tarjeta 5298 1452 2293 9930", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "ISBN 978-84-7204-472-2", "expect": [], "allow": [], "group": "isbn"}
+{"text": "Ref. B-6532546", "expect": [], "allow": [], "group": "invoice"}
+{"text": "La reunión es el 18/12/2026 a las 15:00.", "expect": [], "allow": [], "group": "date"}
+{"text": "Corregido en el commit ead39784d0513b4be1b2164c31a4cef84ba1073c.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "Tarjeta 5132 5838 4023 5267", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Nº de pedido: 4718442958", "expect": [], "allow": [], "group": "order"}
+{"text": "Ref. B-4525751", "expect": [], "allow": [], "group": "invoice"}
+{"text": "La reunión es el 27/01/2026 a las 17:00.", "expect": [], "allow": [], "group": "date"}
+{"text": "Enviar a CP 41152, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Enviar a CP 08834, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Recuerda revisar la configuración antes de desplegar.", "expect": [], "allow": [], "group": "prose"}
+{"text": "Tarjeta 4919 2742 3057 9090", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Tarjeta 3718 6528 7366 247", "expect": [], "allow": [], "group": "wrong_card"}
+{"text": "Expediente 2026/55315", "expect": [], "allow": [], "group": "case"}
+{"text": "Enviar a CP 46263, Sevilla.", "expect": [], "allow": [], "group": "postcode"}
+{"text": "Corregido en el commit c530ebeece8268a72ce81f74017eba3802452dfe.", "expect": [], "allow": ["secret_candidate"], "group": "commit"}
+{"text": "La reunión es el 07/09/2026 a las 12:00.", "expect": [], "allow": [], "group": "date"}
+{"text": "Expediente 2026/41108", "expect": [], "allow": [], "group": "case"}
+{"text": "Matrícula 1420 WRB", "expect": [], "allow": [], "group": "plate"}
+{"text": "La reunión es el 21/02/2026 a las 10:00.", "expect": [], "allow": [], "group": "date"}
+{"text": "El servidor 10.27.119.106 no responde.", "expect": [], "allow": [], "group": "ip"}
+{"text": "Pedido 73769346 enviado ayer por mensajería.", "expect": [], "allow": [], "group": "order"}
+{"text": "La reunión es el 24/10/2026 a las 12:00.", "expect": [], "allow": [], "group": "date"}
+{"text": "Identificador de sesión c96ef834-db0b-4600-a77c-14dbc9fd82c3", "expect": [], "allow": ["secret_candidate"], "group": "uuid"}
+{"text": "Actualiza a la versión 8.1.12", "expect": [], "allow": [], "group": "version"}
+{"text": "Pedido 12345678 enviado", "expect": [], "allow": [], "group": "g6"}
+{"text": "Ref. B-1234567", "expect": [], "allow": [], "group": "g6"}
+{"text": "CP 41001", "expect": [], "allow": [], "group": "g6"}
+{"text": "Expediente 2026/00412", "expect": [], "allow": [], "group": "g6"}
+{"text": "Commit 0f3a9c2e5b7d4180a6c3e9f1b2d4a6c8e0f1a3b5", "expect": [], "allow": ["secret_candidate"], "group": "g6"}
+{"text": "Sesión 3f2b8c1e-4d5a-4b6c-9e7f-0a1b2c3d4e5f", "expect": [], "allow": ["secret_candidate"], "group": "g6"}
+{"text": "ghp​_4dTaEPyWklxfIqnNNPKFttuN7IBXfdeMhSPp", "expect": ["invisible_text", "secret"], "allow": ["phone", "secret_candidate"], "group": "secret_zero_width"}
+{"text": "Cliente 48688336G, cuenta ES91 1978 6533 5859 0137 3127, correo soporte@correo.example.com", "expect": ["email", "es_id", "iban"], "allow": [], "group": "mixed"}
+{"text": "Teléfono de la oficina 915914227", "expect": ["phone"], "allow": [], "group": "landline"}
+{"text": "IBAN ES9485902815064678257639", "expect": ["iban"], "allow": [], "group": "iban_compact"}
+{"text": "Mi móvil: +34 616581686", "expect": ["phone"], "allow": [], "group": "mobile_prefix"}
+{"text": "Teléfono de la oficina 800485297", "expect": ["phone"], "allow": [], "group": "landline"}
+{"text": "Pago con la tarjeta 5165 4271 7056 9367", "expect": ["card"], "allow": [], "group": "card"}
+{"text": "Llámame al 725 37 03 98", "expect": ["phone"], "allow": [], "group": "mobile"}
+{"text": "Pago con la tarjeta 3785 9025 3792 943", "expect": ["card"], "allow": [], "group": "card"}
+{"text": "Facturar a la empresa con CIF H43681113", "expect": ["es_id"], "allow": [], "group": "cif"}
+{"text": "Mi móvil: +34 794525662", "expect": ["phone"], "allow": [], "group": "mobile_prefix"}
+{"text": "ghp​_YVzLxM73xnd3EWhcvp8XOHvX0tgxN1hNOkIU", "expect": ["invisible_text", "secret"], "allow": ["phone", "secret_candidate"], "group": "secret_zero_width"}
+{"text": "Transferencia a ES26 5318 4011 5229 2945 4074", "expect": ["iban"], "allow": [], "group": "iban"}
+{"text": "ghp​_PwVgSCU1dpOXk8Go0ZHAiVU6BkOcqRY90CJT", "expect": ["invisible_text", "secret"], "allow": ["phone", "secret_candidate"], "group": "secret_zero_width"}
+{"text": "RE5JIDkzMDAyMDk5Tg==", "expect": ["es_id"], "allow": ["phone", "secret_candidate"], "group": "dni_base64"}
+{"text": "Mi DNI es 91883223V.", "expect": ["es_id"], "allow": [], "group": "dni"}
+{"text": "Facturar a la empresa con CIF E48606016", "expect": ["es_id"], "allow": [], "group": "cif"}
+{"text": "DNI: 71.193.163-K", "expect": ["es_id"], "allow": [], "group": "dni_dots"}
+{"text": "La clave es AKIAEN7G99Y09FAFG39A", "expect": ["secret"], "allow": ["phone", "secret_candidate"], "group": "secret"}
+{"text": "Escríbeme a jperez82@example.es cuando puedas.", "expect": ["email"], "allow": [], "group": "email"}
+{"text": "La clave es rsg_7nyWDj8laeD2TXqbUKA8koKwupdZ5rqBtdVClz8NT8Z", "expect": ["secret"], "allow": ["phone", "secret_candidate"], "group": "secret"}
+{"text": "５０９６０７９４Ｑ", "expect": ["es_id"], "allow": [], "group": "dni_fullwidth"}
+{"text": "Teléfono de la oficina 985053244", "expect": ["phone"], "allow": [], "group": "landline"}
+{"text": "Mi DNI es 97973811K.", "expect": ["es_id"], "allow": [], "group": "dni"}
+{"text": "Llámame al 638 34 82 37", "expect": ["phone"], "allow": [], "group": "mobile"}
+{"text": "Transferencia a ES11 5260 6778 4922 4178 8878", "expect": ["iban"], "allow": [], "group": "iban"}
+{"text": "Transferencia a ES07 4591 8967 4388 8708 8840", "expect": ["iban"], "allow": [], "group": "iban"}
+{"text": "Cliente 53209032G, cuenta ES95 0818 7148 8420 0574 3668, correo ana@empresa.example.org", "expect": ["email", "es_id", "iban"], "allow": [], "group": "mixed"}
+{"text": "IBAN ES1736565943260130270292", "expect": ["iban"], "allow": [], "group": "iban_compact"}
+{"text": "Facturar a la empresa con CIF A96163894", "expect": ["es_id"], "allow": [], "group": "cif"}
+{"text": "Teléfono de la oficina 813449388", "expect": ["phone"], "allow": [], "group": "landline"}
+{"text": "Pago con la tarjeta 5226 7167 4540 2626", "expect": ["card"], "allow": [], "group": "card"}
+{"text": "NIE Y6831057W", "expect": ["es_id"], "allow": [], "group": "nie"}
+{"text": "Teléfono de la oficina 963585673", "expect": ["phone"], "allow": [], "group": "landline"}
+{"text": "La clave es xoxb-103468853599-2VKHUqcz6nKM3i43Q6ErJhRN", "expect": ["secret"], "allow": ["phone", "secret_candidate"], "group": "secret"}
+{"text": "Cliente 93725473J, cuenta ES52 4278 8555 9340 8243 6226, correo m.lopez@example.es", "expect": ["email", "es_id", "iban"], "allow": [], "group": "mixed"}
+{"text": "Pago con la tarjeta 4491 9499 5693 9579", "expect": ["card"], "allow": [], "group": "card"}
+{"text": "３６６２２２８８Ｄ", "expect": ["es_id"], "allow": [], "group": "dni_fullwidth"}
+{"text": "５４９１１１１１Ｚ", "expect": ["es_id"], "allow": [], "group": "dni_fullwidth"}
+{"text": "IBAN ES9642425183230381626785", "expect": ["iban"], "allow": [], "group": "iban_compact"}
+{"text": "DNI: 40.953.935-C", "expect": ["es_id"], "allow": [], "group": "dni_dots"}
+{"text": "Escríbeme a m.lopez@empresa.example.org cuando puedas.", "expect": ["email"], "allow": [], "group": "email"}
+{"text": "Facturar a la empresa con CIF E64595887", "expect": ["es_id"], "allow": [], "group": "cif"}
+{"text": "La clave es sk-ant-api03-mBLD7rt31QIjYbpMRKbVk2gNNtjFibrE0EfFAUBz", "expect": ["secret"], "allow": ["phone", "secret_candidate"], "group": "secret"}
+{"text": "Teléfono de la oficina 987144466", "expect": ["phone"], "allow": [], "group": "landline"}
+{"text": "Transferencia a ES89 2532 6647 3377 8280 7935", "expect": ["iban"], "allow": [], "group": "iban"}
+{"text": "Facturar a la empresa con CIF B08024945", "expect": ["es_id"], "allow": [], "group": "cif"}
+{"text": "Teléfono de la oficina 812442728", "expect": ["phone"], "allow": [], "group": "landline"}
+{"text": "Transferencia a ES62 9683 4627 7351 6422 0505", "expect": ["iban"], "allow": [], "group": "iban"}
+{"text": "Teléfono de la oficina 988785772", "expect": ["phone"], "allow": [], "group": "landline"}
+{"text": "９２１１９３２９Ｍ", "expect": ["es_id"], "allow": [], "group": "dni_fullwidth"}
+{"text": "ghp​_YIBJsOzL5yLSIWAHJ5NfTi329G7h85VGr2x5", "expect": ["invisible_text", "secret"], "allow": ["phone", "secret_candidate"], "group": "secret_zero_width"}
+{"text": "RE5JIDQ1NTIxMzYwSg==", "expect": ["es_id"], "allow": ["phone", "secret_candidate"], "group": "dni_base64"}
+{"text": "Transferencia a ES44 0630 1801 1109 8010 4826", "expect": ["iban"], "allow": [], "group": "iban"}
+{"text": "Mi DNI es 89340297V.", "expect": ["es_id"], "allow": [], "group": "dni"}
+{"text": "ghp​_2m5ubYLWapN5K6t7fhDdA8V7dqeUjwPbz4Rf", "expect": ["invisible_text", "secret"], "allow": ["phone", "secret_candidate"], "group": "secret_zero_width"}
+{"text": "Teléfono de la oficina 979102794", "expect": ["phone"], "allow": [], "group": "landline"}
+{"text": "DNI: 60.045.135-R", "expect": ["es_id"], "allow": [], "group": "dni_dots"}
+{"text": "La clave es sk-proj-Q8SJh9MONshyNvzB0wN9JdkHtJwrFqrCvBZaAdQq", "expect": ["secret"], "allow": ["phone", "secret_candidate"], "group": "secret"}
+{"text": "３７８７２５０４Ｚ", "expect": ["es_id"], "allow": [], "group": "dni_fullwidth"}
+{"text": "Escríbeme a jperez82@example.es cuando puedas.", "expect": ["email"], "allow": [], "group": "email"}
+{"text": "Cliente 92424942V, cuenta ES93 5277 3404 7636 8383 8355, correo carmen_ruiz@empresa.example.org", "expect": ["email", "es_id", "iban"], "allow": [], "group": "mixed"}
+{"text": "Llámame al 687 59 42 60", "expect": ["phone"], "allow": [], "group": "mobile"}
+{"text": "Mi DNI es 88324709V.", "expect": ["es_id"], "allow": [], "group": "dni"}
+{"text": "Mi DNI es 90746843K.", "expect": ["es_id"], "allow": [], "group": "dni"}
+{"text": "DNI: 65.182.026-A", "expect": ["es_id"], "allow": [], "group": "dni_dots"}
+{"text": "Pago con la tarjeta 4439 0230 7472 2807", "expect": ["card"], "allow": [], "group": "card"}
+{"text": "RE5JIDcxNDQ5MDI4Qg==", "expect": ["es_id"], "allow": ["phone", "secret_candidate"], "group": "dni_base64"}
+{"text": "DNI: 27.321.622-Z", "expect": ["es_id"], "allow": [], "group": "dni_dots"}
+{"text": "Escríbeme a carmen_ruiz@example.es cuando puedas.", "expect": ["email"], "allow": [], "group": "email"}
+{"text": "Pago con la tarjeta 3713 4663 9864 691", "expect": ["card"], "allow": [], "group": "card"}
+{"text": "Teléfono de la oficina 977443452", "expect": ["phone"], "allow": [], "group": "landline"}
+{"text": "Mi móvil: +34 609098209", "expect": ["phone"], "allow": [], "group": "mobile_prefix"}
+{"text": "DNI: 65.363.581-L", "expect": ["es_id"], "allow": [], "group": "dni_dots"}
+{"text": "DNI81339809X", "expect": ["es_id"], "allow": [], "group": "gap_glued"}
+{"text": "Facturar a la empresa con CIF B47853866", "expect": ["es_id"], "allow": [], "group": "cif"}
+{"text": "La clave es AKIADNHXL5NZSTQYA4YS", "expect": ["secret"], "allow": ["phone", "secret_candidate"], "group": "secret"}
+{"text": "Facturar a la empresa con CIF B69656270", "expect": ["es_id"], "allow": [], "group": "cif"}
+{"text": "Pago con la tarjeta 3764 2017 0242 578", "expect": ["card"], "allow": [], "group": "card"}
+{"text": "Transferencia a ES91 2294 8386 8656 4133 7149", "expect": ["iban"], "allow": [], "group": "iban"}
+{"text": "RE5JIDU5MjczNTEyTQ==", "expect": ["es_id"], "allow": ["phone", "secret_candidate"], "group": "dni_base64"}
+{"text": "Escríbeme a ana@empresa.example.org cuando puedas.", "expect": ["email"], "allow": [], "group": "email"}
+{"text": "Llámame al 756 21 67 94", "expect": ["phone"], "allow": [], "group": "mobile"}
+{"text": "Teléfono de la oficina 965728556", "expect": ["phone"], "allow": [], "group": "landline"}
+{"text": "La clave es rsg_AQZSu1XqGwdVhVxmNoFIIJ29wFdGdxpTehTkqbUEPU2", "expect": ["secret"], "allow": ["phone", "secret_candidate"], "group": "secret"}
+{"text": "NIE Y6005575J", "expect": ["es_id"], "allow": [], "group": "nie"}
+{"text": "Pago con la tarjeta 4812 6054 5560 0987", "expect": ["card"], "allow": [], "group": "card"}
+{"text": "DNI86430191D", "expect": ["es_id"], "allow": [], "group": "gap_glued"}
+{"text": "IBAN ES4955152899357099730900", "expect": ["iban"], "allow": [], "group": "iban_compact"}
+{"text": "NIE Y1433174N", "expect": ["es_id"], "allow": [], "group": "nie"}
+{"text": "Llámame al 775 65 59 80", "expect": ["phone"], "allow": [], "group": "mobile"}
+{"text": "Escríbeme a ana@example.es cuando puedas.", "expect": ["email"], "allow": [], "group": "email"}
+{"text": "DNI38614079T", "expect": ["es_id"], "allow": [], "group": "gap_glued"}
+{"text": "Pago con la tarjeta 3724 8608 5074 665", "expect": ["card"], "allow": [], "group": "card"}
+{"text": "Mi DNI es 48753489K.", "expect": ["es_id"], "allow": [], "group": "dni"}
+{"text": "DNI: 79.496.543-X", "expect": ["es_id"], "allow": [], "group": "dni_dots"}
+{"text": "La clave es xoxb-489226505834-jY5tXDpmomRbFN7e8N1mDZDa", "expect": ["secret"], "allow": ["phone", "secret_candidate"], "group": "secret"}
+{"text": "ghp​_T46lRcXIcCrftQSfle9Tt2PxeawIDcuiHzKb", "expect": ["invisible_text", "secret"], "allow": ["phone", "secret_candidate"], "group": "secret_zero_width"}
+{"text": "Teléfono de la oficina 959337221", "expect": ["phone"], "allow": [], "group": "landline"}
+{"text": "La clave es ghp_leg3UiGsS8F9g0lArewM6xGVc3uU8kNsu1Za", "expect": ["secret"], "allow": ["phone", "secret_candidate"], "group": "secret"}

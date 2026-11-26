@@ -1077,6 +1077,7 @@ dependencies = [
  "resguardo-policy",
  "resguardo-proto",
  "resguardo-scan",
+ "serde",
  "serde_json",
  "sha2",
  "tokio",
@@ -1094,6 +1095,21 @@ dependencies = [
  "sha2",
  "thiserror",
  "zeroize",
+]
+
+[[package]]
+name = "resguardo-bench"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "reqwest",
+ "resguardo",
+ "resguardo-audit",
+ "resguardo-core",
+ "resguardo-mock-upstream",
+ "resguardo-scan",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

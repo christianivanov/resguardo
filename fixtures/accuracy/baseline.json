@@ -1,0 +1,30 @@
+{
+  "card": {
+    "false_positives": 2,
+    "missed": 0
+  },
+  "email": {
+    "false_positives": 0,
+    "missed": 0
+  },
+  "es_id": {
+    "false_positives": 1,
+    "missed": 3
+  },
+  "iban": {
+    "false_positives": 0,
+    "missed": 0
+  },
+  "invisible_text": {
+    "false_positives": 0,
+    "missed": 0
+  },
+  "phone": {
+    "false_positives": 9,
+    "missed": 0
+  },
+  "secret": {
+    "false_positives": 0,
+    "missed": 0
+  }
+}

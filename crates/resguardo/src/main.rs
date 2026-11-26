@@ -83,6 +83,22 @@ enum Command {
         #[arg(long)]
         pubkey: PathBuf,
     },
+    /// Run the detectors over the labelled accuracy corpus and print, per class, what was
+    /// found, missed and wrongly found.
+    ///
+    /// With --baseline, exits with 1 if any class misses more or finds more false positives
+    /// than the published counts; with --write-baseline, records the current counts.
+    Accuracy {
+        /// The corpus (JSON Lines with text, expect, allow and group).
+        #[arg(long, default_value = "fixtures/accuracy/corpus.jsonl")]
+        corpus: PathBuf,
+        /// Published counts that this run may not exceed.
+        #[arg(long)]
+        baseline: Option<PathBuf>,
+        /// Write the counts of this run as the new baseline.
+        #[arg(long)]
+        write_baseline: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -137,6 +153,11 @@ fn main() -> ExitCode {
         }
         .map(|()| Outcome::Success),
         Command::VerifyLog { path, pubkey } => verify_log(&path, &pubkey),
+        Command::Accuracy {
+            corpus,
+            baseline,
+            write_baseline,
+        } => accuracy(&corpus, baseline.as_deref(), write_baseline.as_deref()),
     };
     match result {
         Ok(Outcome::Success) => ExitCode::SUCCESS,
@@ -451,6 +472,51 @@ fn verify_log(path: &Path, pubkey: &Path) -> anyhow::Result<Outcome> {
         Err(error @ VerifyError::Io(_)) => {
             Err(anyhow::Error::new(error).context(path.display().to_string()))
         }
+    }
+}
+
+/// ADR 0009: 0 within the baseline (or none given), 1 a regression, 2 cannot read.
+fn accuracy(
+    corpus: &Path,
+    baseline: Option<&Path>,
+    write_baseline: Option<&Path>,
+) -> anyhow::Result<Outcome> {
+    let text =
+        std::fs::read_to_string(corpus).with_context(|| format!("reading {}", corpus.display()))?;
+    let samples = text
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| !line.trim().is_empty())
+        .map(|(i, line)| {
+            serde_json::from_str(line)
+                .with_context(|| format!("{}: line {}", corpus.display(), i + 1))
+        })
+        .collect::<anyhow::Result<Vec<resguardo::accuracy::Sample>>>()?;
+    let pipeline = Pipeline::new(&ScanConfig::default())?;
+    let report = resguardo::accuracy::run(&pipeline, &samples)?;
+    print!("{}", report.table());
+    if let Some(path) = write_baseline {
+        let json = serde_json::to_string_pretty(&report.baseline())?;
+        std::fs::write(path, json + "\n").with_context(|| format!("writing {}", path.display()))?;
+        eprintln!("baseline written to {}", path.display());
+    }
+    let Some(path) = baseline else {
+        return Ok(Outcome::Success);
+    };
+    let published: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?,
+    )
+    .with_context(|| path.display().to_string())?;
+    let regressions = report.regressions(&published);
+    if regressions.is_empty() {
+        println!("\nwithin the baseline in {}", path.display());
+        Ok(Outcome::Success)
+    } else {
+        println!("\nworse than the baseline in {}:", path.display());
+        for regression in regressions {
+            println!("  {regression}");
+        }
+        Ok(Outcome::ProblemsFound)
     }
 }
 

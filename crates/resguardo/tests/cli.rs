@@ -1,6 +1,6 @@
 //! End-to-end tests of the `resguardo` command line.
 // Test helpers may panic: a failure to spawn the binary is a test failure.
-#![allow(clippy::expect_used)]
+#![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -290,5 +290,41 @@ fn scan_reports_a_missing_file_with_2() {
     assert!(
         stderr.contains("reading /nonexistent/input.txt"),
         "{stderr}"
+    );
+}
+
+#[test]
+fn accuracy_is_within_the_published_baseline() {
+    // G.6: the CI fails if any detector misses more or finds more false positives than
+    // the counts published in docs/ACCURACY.md.
+    let corpus = repo_file("fixtures/accuracy/corpus.jsonl");
+    let baseline = repo_file("fixtures/accuracy/baseline.json");
+    let output = resguardo(&["accuracy", "--corpus", &corpus, "--baseline", &baseline]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0), "{stdout}");
+    assert!(stdout.contains("within the baseline"), "{stdout}");
+}
+
+#[test]
+fn accuracy_fails_when_a_detector_gets_worse() {
+    let dir =
+        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("accuracy-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let corpus = dir.join("corpus.jsonl");
+    std::fs::write(&corpus, "{\"text\": \"Ref. 612345678\", \"expect\": []}\n").unwrap();
+    let baseline = dir.join("baseline.json");
+    std::fs::write(&baseline, "{}").unwrap();
+    let output = resguardo(&[
+        "accuracy",
+        "--corpus",
+        corpus.to_str().unwrap(),
+        "--baseline",
+        baseline.to_str().unwrap(),
+    ]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(1), "{stdout}");
+    assert!(
+        stdout.contains("phone: 1 false positives (baseline 0)"),
+        "{stdout}"
     );
 }
