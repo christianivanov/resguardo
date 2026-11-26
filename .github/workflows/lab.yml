@@ -1,0 +1,74 @@
+# Run by hand (Actions → lab → Run workflow): the Docker exfiltration lab and the benchmark,
+# on a standard Linux runner, free for public repositories. Nothing here contacts a real
+# provider; every secret is fake. Actions are pinned by commit SHA, looked up with
+# `git ls-remote` on 2026-11-26; the tag is in the comment.
+name: lab
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lab:
+    name: exfiltration lab (Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      COMPOSE: docker compose -f lab/docker-compose.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: build the images
+        run: $COMPOSE --profile unprotected build
+      - name: start resguardo and wait until it answers
+        run: |
+          $COMPOSE up -d resguardo attacker
+          $COMPOSE run --rm --entrypoint sh app -c \
+            'for i in $(seq 60); do curl -sf -o /dev/null http://resguardo:8787/healthz && exit 0; sleep 1; done; exit 1'
+      - name: protected (must exit 0)
+        run: $COMPOSE run --rm app
+      - name: unprotected (must exit 1)
+        run: |
+          if $COMPOSE --profile unprotected run --rm app-unprotected; then
+            echo "the unprotected run should have leaked"; exit 1
+          fi
+      - name: what the attacker received
+        run: $COMPOSE logs attacker
+      - name: verify the receipts
+        run: $COMPOSE exec -T resguardo resguardo verify-log /data/audit.jsonl --pubkey /data/signing.pub
+      - name: stop
+        if: always()
+        run: $COMPOSE --profile unprotected down -v
+
+  bench:
+    name: benchmark (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: machine
+        run: |
+          {
+            echo '## Machine'
+            echo '```'
+            uname -srm
+            lscpu | grep -E 'Model name|^CPU\(s\)'
+            free -h | head -2
+            df -h . | tail -1
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: benchmark
+        run: |
+          {
+            echo '## Benchmark'
+            echo '```'
+            cargo run -q --release -p resguardo-bench
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

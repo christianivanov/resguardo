@@ -25,7 +25,7 @@ The design document asks for about 300 synthetic Spanish texts that look sensiti
    The false-positive rate is over the negatives, the texts that expect nothing. `secret_candidate` is allowed on commit hashes, UUIDs and tracking numbers (Annex G.6).
 3. **Gate.**
    - `resguardo accuracy --baseline fixtures/accuracy/baseline.json` exits with 1 (ADR 0009) if any class has more misses or more false positives than the baseline.
-   - The baseline holds the counts published in `docs/ACCURACY.md`. The check is run locally (`cargo run -p resguardo -- accuracy --baseline fixtures/accuracy/baseline.json`); the project uses no hosted CI.
+   - The baseline holds the counts published in `docs/ACCURACY.md`. The check is run locally (`cargo run -p resguardo -- accuracy --baseline fixtures/accuracy/baseline.json`), and on every push to `main` by `.github/workflows/checks.yml`, added once the repository was public.
    - Updating the baseline is a deliberate change, made in the same commit as the detector change and the document.
 4. **Benchmark without `criterion`.** `tools/bench` is a binary in the workspace that uses only existing dependencies.
    - It times scanning on texts of 1, 16 and 256 KB.
