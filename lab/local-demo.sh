@@ -46,5 +46,5 @@ echo
 TARGET=http://127.0.0.1:19100 sh "$ROOT/lab/attack.sh" && unprotected=0 || unprotected=$?
 echo
 echo "== receipts"
-"$BIN/resguardo" verify-log "$WORK/audit.jsonl" --pubkey "$WORK/signing.pub"
+(cd "$WORK" && "$BIN/resguardo" verify-log audit.jsonl --pubkey signing.pub)
 echo "== exit codes: protected $protected, unprotected $unprotected"
