@@ -197,7 +197,11 @@ impl AuditLog {
         let mut line = Value::Object(entry).to_string();
         line.push('\n');
 
-        let result = self.write_line(inner, line.as_bytes());
+        // Only what must be on disk before anything leaves is flushed: decisions, and the
+        // log's own entries. An outcome reaches the disk with the next flush; if a crash loses
+        // it, the chain goes on from the last entry on disk (ADR 0015).
+        let flush = self.fsync && kind != AuditKind::Outcome;
+        let result = self.write_line(inner, line.as_bytes(), flush);
         self.healthy.store(result.is_ok(), Ordering::Relaxed);
         result.map_err(|source| AuditError::Io {
             path: self.path.clone(),
@@ -209,11 +213,11 @@ impl AuditLog {
         Ok(seq)
     }
 
-    fn write_line(&self, inner: &mut Inner, line: &[u8]) -> std::io::Result<()> {
+    fn write_line(&self, inner: &mut Inner, line: &[u8], flush: bool) -> std::io::Result<()> {
         // A failed write may have left part of a line: cut back to the last entry first.
         inner.file.set_len(inner.len)?;
         let written = inner.file.write_all(line).and_then(|()| {
-            if self.fsync {
+            if flush {
                 inner.file.sync_data()
             } else {
                 Ok(())

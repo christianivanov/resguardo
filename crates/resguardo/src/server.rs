@@ -42,7 +42,7 @@ use serde_json::json;
 use tokio::net::TcpListener;
 
 use crate::rate_limit::{RateLimiter, retry_after_secs};
-use crate::receipt::{Receipt, micros, outcome_entry};
+use crate::receipt::{Receipt, micros, outcome_in_background};
 
 const X_API_KEY: HeaderName = HeaderName::from_static("x-api-key");
 const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-resguardo-request-id");
@@ -295,7 +295,9 @@ async fn proceed(
                 ),
                 ("response_findings".to_owned(), response_findings),
             ]);
-            outcome_entry(app, &receipt.request_id, fields).await;
+            // The response does not wait for its outcome: only the decision entry must be
+            // on disk before anything leaves (ADR 0003).
+            outcome_in_background(app, &receipt.request_id, fields);
             Ok(forwarded(response, &receipt.request_id, decision))
         }
         UpstreamAnswer::Stream(upstream) => Ok(streamed(
