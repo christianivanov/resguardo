@@ -9,10 +9,11 @@ use base64::Engine as _;
 use base64::alphabet;
 use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
 
-/// Shortest Base64 fragment worth decoding (Annex F.1).
-const MIN_BASE64_CHARS: usize = 24;
-/// Shortest hexadecimal fragment worth decoding (Annex F.1).
-const MIN_HEX_DIGITS: usize = 32;
+/// Shortest Base64 fragment worth decoding: 9 bytes, the shortest value a detector finds
+/// (ADR 0011).
+const MIN_BASE64_CHARS: usize = 12;
+/// Shortest hexadecimal fragment worth decoding: 9 bytes, as for Base64 (ADR 0011).
+const MIN_HEX_DIGITS: usize = 18;
 /// Fewest `%XX` sequences that make a URL-encoded fragment (Annex F.1).
 const MIN_URL_ESCAPES: usize = 3;
 /// Share of printable characters a decoded text needs to be scanned (Annex F.1).
@@ -280,28 +281,25 @@ mod tests {
     }
 
     #[test]
-    fn base64_candidates_need_24_characters_and_keep_their_padding() {
+    fn base64_candidates_need_12_characters_and_keep_their_padding() {
         let text = format!("token: {TOKEN_BASE64}.");
         assert_eq!(layers(&text), vec![(Layer::Base64, 7..63)]);
-        assert!(layers("abcdefghijklmnopqrstuvw").is_empty());
-        assert_eq!(layers("abcdefghijklmnopqrstuvwx===")[0].1, 0..26);
+        // 12 characters or more (ADR 0011).
+        assert!(layers("abcdefghijk").is_empty());
+        assert_eq!(layers("abcdefghijkl")[0], (Layer::Base64, 0..12));
+        assert_eq!(layers("abcdefghijkl===")[0].1, 0..14);
     }
 
     #[test]
-    fn hex_candidates_need_32_digits_in_even_number() {
+    fn hex_candidates_need_18_digits_in_even_number() {
         let text = format!("0x{TOKEN_HEX}");
         let found = layers(&text);
         assert!(found.contains(&(Layer::Hex, 2..82)), "{found:?}");
-        assert!(
-            !layers(&"a".repeat(31))
-                .iter()
-                .any(|(l, _)| *l == Layer::Hex)
-        );
-        assert!(
-            !layers(&"a".repeat(33))
-                .iter()
-                .any(|(l, _)| *l == Layer::Hex)
-        );
+        let is_hex = |text: &str| layers(text).iter().any(|(l, _)| *l == Layer::Hex);
+        // 18 digits or more, in even number (ADR 0011).
+        assert!(!is_hex(&"a".repeat(16)));
+        assert!(is_hex(&"a".repeat(18)));
+        assert!(!is_hex(&"a".repeat(19)));
     }
 
     #[test]

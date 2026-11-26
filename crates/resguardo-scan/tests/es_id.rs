@@ -95,8 +95,7 @@ fn the_longest_window_does_not_hide_a_neighbour() {
 
 #[test]
 fn an_id_hidden_in_base64_is_found_over_the_encoded_fragment() {
-    // Base64 of "Mi DNI es 12345678Z", computed outside the code. F.1 decodes fragments of
-    // 24 characters or more, so a bare id in Base64 (16 characters) is not decoded.
+    // Base64 of "Mi DNI es 12345678Z", computed outside the code.
     let encoded = "TWkgRE5JIGVzIDEyMzQ1Njc4Wg==";
     let report = Pipeline::new(&ScanConfig::default())
         .unwrap()
@@ -111,4 +110,42 @@ fn an_id_hidden_in_base64_is_found_over_the_encoded_fragment() {
         found,
         vec![(DataClass::EsId, 0..28, vec!["base64".to_owned()])]
     );
+}
+
+/// (class, span, via) of every finding.
+fn with_layers(text: &str) -> Vec<(DataClass, Range<usize>, Vec<String>)> {
+    Pipeline::new(&ScanConfig::default())
+        .unwrap()
+        .scan_text("", text)
+        .unwrap()
+        .findings
+        .into_iter()
+        .map(|f| (f.class, f.span, f.via))
+        .collect()
+}
+
+#[test]
+fn a_bare_id_in_base64_or_hex_is_found() {
+    // "12345678Z" encoded outside the code: 12 Base64 characters, 18 hex digits (ADR 0011).
+    assert_eq!(
+        with_layers("MTIzNDU2Nzha"),
+        vec![(DataClass::EsId, 0..12, vec!["base64".to_owned()])]
+    );
+    assert_eq!(
+        with_layers("dni 31323334353637385a"),
+        vec![(DataClass::EsId, 4..22, vec!["hex".to_owned()])]
+    );
+}
+
+#[test]
+fn long_ordinary_words_give_no_findings_and_no_flags() {
+    let text = "Desafortunadamente, la internacionalizacion de la configuracion \
+                requiere responsabilidades administrativas extraordinariamente \
+                bien documentadas: getElementById, secret_candidate, \
+                circumstantially, antidisestablishmentarianism.";
+    let report = Pipeline::new(&ScanConfig::default())
+        .unwrap()
+        .scan_text("", text)
+        .unwrap();
+    assert_eq!(report, resguardo_core::ScanReport::default());
 }
