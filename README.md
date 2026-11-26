@@ -32,7 +32,7 @@ Resguardo is a single Rust binary that sits between your applications and the Op
 
 - 🔒 **Closed by default.** Only listed providers and models get through, applications never see a real provider key, and any internal error blocks the request.
 - 🧾 **A signed receipt for every decision.** A hash-chained, Ed25519-signed log that anyone can verify with the public key. It records decisions, never prompt content.
-- 🇪🇸 **Spanish data, validated.** DNI, NIE, CIF and IBAN are detected only when their check digit is valid, with a measured and published false-positive rate.
+- 🇪🇸 **Spanish data, validated.** DNI, NIE, CIF, IBAN and cards are detected only when their check digit is valid. The false-positive rate will be measured on a Spanish corpus and published (M6).
 - 🛡️ **Security first.** No `unsafe`, strict parsing so the scanner and the provider never read different values, and post-quantum TLS to the provider.
 - ⚡ **One small binary.** No database and no runtime services: a TOML file, a JSONL log and a key pair.
 
@@ -78,6 +78,9 @@ ok   anthropic: message with the key as a bearer token
 ok   openai: unknown key -> AuthenticationError
 ok   openai: model outside the list -> PermissionDeniedError
 ...
+ok   openai: a DNI reaches the provider redacted  (echo: Mi DNI es [REDACTED:es_id:1])
+ok   openai: an AWS key -> PermissionDeniedError
+...
 ok   no virtual key reached the upstream
 ```
 
@@ -90,7 +93,7 @@ One command starts a mock provider and Resguardo, then calls them with the offic
 | M0 | Foundations: workspace, licenses, ADRs, threat model | ✅ |
 | M1 | Proxy: both APIs, virtual keys, limits, egress with post-quantum TLS | ✅ |
 | M2 | Detectors: secrets, invisible text, de-obfuscation, `resguardo scan` | ✅ |
-| M3 | Spanish validators, policy and redaction | ⏳ |
+| M3 | Spanish ids, IBAN, cards, phones and email; policy and redaction | ✅ |
 | M4 | Streaming and response controls | ⏳ |
 | M5 | Signed audit log and `resguardo verify-log` | ⏳ |
 | M6 | Accuracy corpus, benchmark, exfiltration lab, v0.1.0 | ⏳ February 2027 |
