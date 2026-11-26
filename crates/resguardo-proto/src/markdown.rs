@@ -49,7 +49,10 @@ enum Parsed {
     RemovedImage {
         end: usize,
     },
-    NotAConstruct,
+    /// Brackets closed at `close` but not followed by `(`.
+    NotAConstruct {
+        close: usize,
+    },
     /// The text ended before the construct did, within the limit.
     Incomplete,
     /// [`HOLD_LIMIT`] bytes passed without the construct closing.
@@ -100,6 +103,19 @@ impl ResponseControls {
         out
     }
 
+    /// The controls applied to the content between a construct's brackets. If the result
+    /// does not have balanced brackets (an image removed up to the content's end took a
+    /// `]` with it, for example), its brackets are escaped, so the construct's own `]`
+    /// still closes it and nothing new can form around it.
+    fn contained(&self, text: &str) -> String {
+        let out = self.apply(text);
+        if balanced(&out) {
+            out
+        } else {
+            escape_brackets(&out)
+        }
+    }
+
     /// Applies the controls to a complete text.
     pub fn apply(&self, text: &str) -> String {
         let mut filter = MarkdownFilter::new(self);
@@ -141,9 +157,15 @@ impl ResponseControls {
                         None => return hold(out, slice(buf, start, bytes.len())),
                     }
                 }
-                Parsed::NotAConstruct => {
+                // The brackets stay as one unit around their controlled content. Changing the
+                // content one construct at a time could make another `]` close them, and a
+                // new link or image appear (found by the fuzzer). The content has balanced
+                // brackets, and so do its replacements, so the same `]` still closes them.
+                Parsed::NotAConstruct { close } => {
                     out.push_str(slice(buf, start, open + 1));
-                    i = open + 1;
+                    out.push_str(&self.contained(slice(buf, open + 1, close)));
+                    out.push(']');
+                    i = close + 1;
                 }
                 Parsed::Incomplete if !at_end => {
                     return hold(out, slice(buf, start, bytes.len()));
@@ -214,7 +236,7 @@ impl ResponseControls {
             return end;
         }
         if bytes.get(close + 1) != Some(&b'(') {
-            return Parsed::NotAConstruct;
+            return Parsed::NotAConstruct { close };
         }
 
         // The `)` that closes the destination, with nested parentheses balanced.
@@ -246,25 +268,28 @@ impl ResponseControls {
                 classify(destination),
                 Destination::Local | Destination::Data
             );
-            if self.strip_remote_images && !local {
+            // A renderer may not accept it as an image (a destination with a space, say) and
+            // read its parts as Markdown. A destination the controls would change is not a
+            // real one: the image is removed.
+            let tampered = self.apply(destination) != destination;
+            if (self.strip_remote_images && !local) || tampered {
                 return Parsed::RemovedImage { end: end + 1 };
             }
-            // Kept, but a renderer may not accept it as an image (a destination with a
-            // space, say) and read its parts as Markdown: they get the controls too.
-            format!("![{}]({})", self.apply(text), self.apply(destination))
+            format!("![{}]({destination})", self.contained(text))
         } else {
             // The link text may hold an image of its own.
-            let inner = self.apply(text);
+            let inner = self.contained(text);
             let allowed = match classify(destination) {
                 Destination::Local => true,
                 Destination::Web(Some(host)) => self.allowed_hosts.contains(&host),
                 Destination::Web(None) | Destination::Data | Destination::Other => false,
             };
-            if self.strip_links_outside && !allowed {
+            // As for images: a destination the controls would change is not a real one.
+            let tampered = self.apply(destination) != destination;
+            if (self.strip_links_outside && !allowed) || tampered {
                 escape_link_text(&inner)
             } else {
-                // As for images: the destination may hold Markdown a renderer reads as such.
-                format!("[{inner}]({})", self.apply(destination))
+                format!("[{inner}]({destination})")
             }
         };
         Parsed::Complete {
@@ -312,6 +337,37 @@ fn placeholder(after_bang: bool, bytes: &[u8], end: usize, at_end: bool) -> Opti
         _ if after_bang => Some(IMAGE_REMOVED_ESCAPED),
         _ => Some(IMAGE_REMOVED),
     }
+}
+
+/// Whether the unescaped brackets of `text` pair up, never closing more than they opened.
+fn balanced(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut depth = 0usize;
+    for (i, &b) in bytes.iter().enumerate() {
+        if escaped(bytes, i) {
+            continue;
+        }
+        match b {
+            b'[' => depth += 1,
+            b']' if depth == 0 => return false,
+            b']' => depth -= 1,
+            _ => {}
+        }
+    }
+    depth == 0
+}
+
+/// `text` with a backslash before every unescaped bracket.
+fn escape_brackets(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len() + 8);
+    for (i, c) in text.char_indices() {
+        if matches!(c, '[' | ']') && !escaped(bytes, i) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// The text of a removed link, with Markdown that could start a new link or image made
@@ -426,6 +482,14 @@ fn classify(destination: &str) -> Destination {
         Some(rest) => rest.split('>').next().unwrap_or_default(),
         None => trimmed.split_whitespace().next().unwrap_or_default(),
     };
+    // As a browser does before anything else (WHATWG URL): remove tabs and newlines
+    // anywhere, and strip leading and trailing control characters and spaces. Otherwise
+    // "\u{1}//attacker.test" would look local here and be remote there.
+    let cleaned: String = url
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect();
+    let url = cleaned.trim_matches(|c: char| c <= ' ');
     let protocol_relative = ["//", "\\\\", "/\\", "\\/"]
         .iter()
         .any(|prefix| url.starts_with(prefix));

@@ -234,15 +234,36 @@ fn a_backslash_at_a_split_still_escapes_what_follows() {
 }
 
 #[test]
-fn markdown_inside_a_kept_destination_gets_the_controls() {
+fn markdown_inside_a_kept_destination_removes_the_construct() {
     // Found by the fuzzer: CommonMark does not accept "x ![b](...)" as a destination, so it
-    // renders the outer link as text and the inner image as an image.
+    // renders the outer link as text and the inner image as an image. A destination that
+    // the controls would change is not a real one, so the construct is not kept.
     assert_eq!(
         apply_split_everywhere("[a](x ![b](https://attacker.test/?d=1))"),
-        "[a](x [image removed])"
+        "a"
     );
     assert_eq!(
         apply("![a](x.png ![b](https://attacker.test/?d=1))"),
-        "![a](x.png [image removed])"
+        "[image removed]"
     );
+}
+
+#[test]
+fn removing_a_construct_inside_brackets_cannot_make_a_new_image() {
+    // Found by the fuzzer: removing the inner link made the outer `![` pair with a later
+    // `](...)` and become an image.
+    let text = "![a [x](https://attacker.test/)] b](https://attacker.test/i.png)";
+    // The brackets keep their content as a unit, so `![a x]` is still closed before " b]".
+    let out = apply_split_everywhere(text);
+    assert_eq!(out, "![a x] b](https://attacker.test/i.png)");
+    assert_eq!(apply(&out), out);
+}
+
+#[test]
+fn destinations_are_cleaned_like_a_browser_before_they_are_judged() {
+    // A browser strips leading control characters and removes tabs and newlines, so these
+    // resolve to attacker.test even though they do not start with "//".
+    assert_eq!(apply("![x](\u{1}//attacker.test/i.png)"), "[image removed]");
+    assert_eq!(apply("[x](\u{1}//attacker.test/)"), "x");
+    assert_eq!(apply("[x](<\t//attacker.test/>)"), "x");
 }
