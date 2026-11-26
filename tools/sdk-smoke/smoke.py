@@ -94,5 +94,35 @@ try:
 except anthropic.PermissionDeniedError as e:
     check("anthropic: model outside the list -> PermissionDeniedError", error_code(e) == "MODEL_NOT_ALLOWED", str(e.body))
 
+# --- Scanning, policy and redaction (M3) ------------------------------------------------------
+
+DNI = [{"role": "user", "content": "Mi DNI es 12345678Z"}]
+# Fake key from the AWS documentation, split so that secret scanners do not flag this file.
+AWS_KEY = [{"role": "user", "content": "mi clave es " + "AKIA" + "IOSFODNN7EXAMPLE"}]
+
+reply = openai_client(KEY).chat.completions.create(model="gpt-4.1-mini", messages=DNI)
+content = reply.choices[0].message.content
+check("openai: a DNI reaches the provider redacted", content == "echo: Mi DNI es [REDACTED:es_id:1]", content)
+
+reply = anthropic_client(api_key=KEY).messages.create(
+    model="claude-sonnet-5-5", max_tokens=16, messages=DNI
+)
+text = reply.content[0].text
+check("anthropic: a DNI reaches the provider redacted", text == "echo: Mi DNI es [REDACTED:es_id:1]", text)
+
+try:
+    openai_client(KEY).chat.completions.create(model="gpt-4.1-mini", messages=AWS_KEY)
+    check("openai: an AWS key is blocked", False, "no error raised")
+except openai.PermissionDeniedError as e:
+    check("openai: an AWS key -> PermissionDeniedError", error_code(e) == "SENSITIVE_DATA", str(e.body))
+
+try:
+    anthropic_client(api_key=KEY).messages.create(
+        model="claude-sonnet-5-5", max_tokens=16, messages=AWS_KEY
+    )
+    check("anthropic: an AWS key is blocked", False, "no error raised")
+except anthropic.PermissionDeniedError as e:
+    check("anthropic: an AWS key -> PermissionDeniedError", error_code(e) == "SENSITIVE_DATA", str(e.body))
+
 print(f"\n{'all checks passed' if failures == 0 else f'{failures} check(s) failed'}")
 sys.exit(1 if failures else 0)
