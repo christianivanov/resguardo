@@ -11,3 +11,6 @@ Ideas that are out of scope for v0.1. Add them here instead of implementing them
 - Scan the values of forwarded headers (`anthropic-beta`), which are short ASCII but not scanned in v0.1.
 - A header read timeout for slow clients (slowloris), and TLS on the listening side.
 - Scan numbers in the JSON body (for example card numbers sent as numbers), with the original digits rather than the parsed value.
+- Regulatory mapping (`docs/COMPLIANCE.md`, M6 at the earliest): which control gives evidence for which article (GDPR art. 5.2, 32 and chapter V, DORA third-party ICT risk, ENS). To be reviewed by someone with legal or compliance background; AI Act deadlines to be checked at the time of writing.
+- Spanish Social Security number (NUSS) with its mod 97 check digits, as a new `DataClass` (needs an ADR).
+- Audit entries linked to a record of processing activities (GDPR art. 30), for example a `purpose` per principal. **Decide at the start of M5**, before the audit format is fixed.
