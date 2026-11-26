@@ -29,7 +29,7 @@ Annex G.4 gives the golden cases. Several points are open:
    - OpenAI: `choices[].delta.content`, `delta.refusal` and `delta.tool_calls[].function.arguments`;
    - Anthropic: `content_block_delta` with `text_delta`, `input_json_delta` (`partial_json`) and `thinking_delta`.
 
-   Each text is scanned with the last `overlap_bytes` (256) of the earlier texts of the same block: a choice and a tool call for OpenAI, a content block index for Anthropic. A secret split across two events is found.
+   Each of these texts is scanned with the last `overlap_bytes` (256) of the earlier texts of the same block: a choice and a tool call for OpenAI, a content block index for Anthropic. A secret split across two events is found. Every other string of the event data (block starts, ids, error messages, server tool results) is scanned on its own, as for requests (ADR 0007).
 2. **Non-streamed responses** are parsed strictly, and every string in them is scanned, as for requests (ADR 0007).
 3. **Response findings.** If policy blocks (ADR 0012, with the same actions and limit flags as requests), the response stops:
    - a stream gets an `event: error` with the JSON of Annex H (code `SENSITIVE_DATA`) and is closed;
