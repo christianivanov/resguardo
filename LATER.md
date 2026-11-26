@@ -14,3 +14,4 @@ Ideas that are out of scope for v0.1. Add them here instead of implementing them
 - Regulatory mapping (`docs/COMPLIANCE.md`, M6 at the earliest): which control gives evidence for which article (GDPR art. 5.2, 32 and chapter V, DORA third-party ICT risk, ENS). To be reviewed by someone with legal or compliance background; AI Act deadlines to be checked at the time of writing.
 - Spanish Social Security number (NUSS) with its mod 97 check digits, as a new `DataClass` (needs an ADR).
 - Audit entries linked to a record of processing activities (GDPR art. 30), for example a `purpose` per principal. **Decide at the start of M5**, before the audit format is fixed.
+- Audit log rotation by size or date: v0.1 keeps one growing file and the operator archives it (ADR 0015). Proposal: segments that chain to the previous one's last hash, with `verify-log` accepting a series.
